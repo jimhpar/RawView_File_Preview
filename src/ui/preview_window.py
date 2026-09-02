@@ -3,15 +3,17 @@ import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGraphicsDropShadowEffect,
-    QApplication, QFrame
+    QApplication, QFrame, QStackedWidget, QProgressBar
 )
 from PyQt6.QtCore import (
-    Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal
+    Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QUrl
 )
 from PyQt6.QtGui import (
     QPixmap, QPainter, QColor, QFont, QBrush, QPen, QImage, QPainterPath,
     QKeySequence, QShortcut, QLinearGradient
 )
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 from src.core.decoders import PreviewResult
 from src.utils.win32_helper import calculate_popup_position
 
@@ -25,6 +27,19 @@ FORMAT_COLORS = {
     "TIF": ("#10B981", "#064E3B"),
     "SVG": ("#F43F5E", "#4C0519"),
     "SVGZ":("#F43F5E", "#4C0519"),
+    # Video Formats
+    "MP4": ("#38BDF8", "#0369A1"),
+    "MKV": ("#10B981", "#064E3B"),
+    "MOV": ("#A855F7", "#3B0764"),
+    "AVI": ("#F59E0B", "#451A03"),
+    "WMV": ("#06B6D4", "#164E63"),
+    "WEBM":("#EC4899", "#831843"),
+    "FLV": ("#F43F5E", "#881337"),
+    "M4V": ("#38BDF8", "#0369A1"),
+    "TS":  ("#6366F1", "#312E81"),
+    "3GP": ("#84CC16", "#365314"),
+    "MPG": ("#EAB308", "#713F12"),
+    "MPEG":("#EAB308", "#713F12"),
     # Camera RAW
     "DNG": ("#F59E0B", "#451A03"),
     "CR2": ("#F59E0B", "#451A03"),
@@ -58,7 +73,7 @@ class ImageCanvas(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumSize(280, 200)
+        self.setMinimumSize(280, 180)
         self.setMouseTracking(True)
 
         self._source_qimage = QImage()
@@ -102,7 +117,7 @@ class ImageCanvas(QLabel):
         else:
             w = min(orig_w, self.max_display_w)
             h = int(w / aspect)
-        return QSize(max(w, 50), max(h, 50))
+        return QSize(max(w, 100), max(h, 80))
 
     def _update_scaled_pixmap(self):
         if self._source_qimage.isNull():
@@ -234,9 +249,107 @@ class ImageCanvas(QLabel):
 
         painter.end()
 
+class VideoPlayerWidget(QWidget):
+    """
+    Hardware-accelerated live video player with muted looping,
+    playback progress bar, and instant start/stop for hover previews.
+    """
+    playback_time_changed = pyqtSignal(int, int) # (pos_ms, dur_ms)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(320, 180)
+        self.max_display_w = 640
+        self.max_display_h = 480
+        self.aspect_ratio = 16.0 / 9.0
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Video Output Viewport
+        self.video_widget = QVideoWidget(self)
+        self.video_widget.setStyleSheet("background-color: #000000; border-radius: 8px;")
+        layout.addWidget(self.video_widget, stretch=1)
+
+        # Sleek Micro Progress Bar
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setFixedHeight(3)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: rgba(255, 255, 255, 0.1);
+                border: none;
+                border-radius: 1px;
+            }
+            QProgressBar::chunk {
+                background-color: #38BDF8;
+                border-radius: 1px;
+            }
+        """)
+        layout.addWidget(self.progress_bar)
+
+        # Media Player & Audio Output
+        self.player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
+        self.player.setAudioOutput(self.audio_output)
+        self.player.setVideoOutput(self.video_widget)
+        self.audio_output.setMuted(True)
+        self.player.setLoops(QMediaPlayer.Loops.Infinite)
+
+        self.player.positionChanged.connect(self._on_position_changed)
+        self.player.durationChanged.connect(self._on_duration_changed)
+
+    def set_video_dimensions(self, width: int, height: int, max_w: int = 640, max_h: int = 480):
+        self.max_display_w = max_w
+        self.max_display_h = max_h
+        if width > 0 and height > 0:
+            self.aspect_ratio = width / height
+        else:
+            self.aspect_ratio = 16.0 / 9.0
+
+    def sizeHint(self) -> QSize:
+        if (self.max_display_w / max(self.max_display_h, 1)) > self.aspect_ratio:
+            h = min(self.max_display_h, 480)
+            w = int(h * self.aspect_ratio)
+        else:
+            w = min(self.max_display_w, 640)
+            h = int(w / self.aspect_ratio)
+        return QSize(max(w, 240), max(h, 140))
+
+    def play_video(self, file_path: str):
+        self.player.stop()
+        self.progress_bar.setValue(0)
+        url = QUrl.fromLocalFile(file_path) if not file_path.startswith("http") and not file_path.startswith("ftp") else QUrl(file_path)
+        self.player.setSource(url)
+        self.player.play()
+
+    def stop_video(self):
+        self.player.stop()
+        self.player.setSource(QUrl())
+        self.progress_bar.setValue(0)
+
+    def toggle_play_pause(self):
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            self.player.play()
+
+    def _on_position_changed(self, pos_ms: int):
+        dur = self.player.duration()
+        if dur > 0:
+            pct = int((pos_ms / dur) * 100)
+            self.progress_bar.setValue(pct)
+        self.playback_time_changed.emit(pos_ms, dur)
+
+    def _on_duration_changed(self, dur_ms: int):
+        pos = self.player.position()
+        self.playback_time_changed.emit(pos, dur_ms)
+
 class FloatingPreviewHUD(QWidget):
     """
-    Hardware-accelerated, glassmorphic floating preview window for RawView.
+    Hardware-accelerated, glassmorphic floating preview window for RawView v2.0.1.
+    Seamlessly renders full-resolution images, documents, and live video playback.
     """
     pin_state_changed = pyqtSignal(bool)
     visibility_changed = pyqtSignal(bool)
@@ -331,7 +444,10 @@ class FloatingPreviewHUD(QWidget):
 
         container_layout.addLayout(header_layout)
 
-        # 2. Main Viewport
+        # 2. Main Viewport Stack (Image Canvas vs Live Video Player)
+        self.viewport_stack = QStackedWidget(self)
+        self.viewport_stack.setStyleSheet("background-color: transparent;")
+
         self.canvas = ImageCanvas(self)
         self.canvas.zoom_changed.connect(self._on_zoom_changed)
         self.canvas.setStyleSheet("""
@@ -339,7 +455,13 @@ class FloatingPreviewHUD(QWidget):
             border-radius: 8px;
             background-color: #12151E;
         """)
-        container_layout.addWidget(self.canvas, stretch=1)
+        self.viewport_stack.addWidget(self.canvas)
+
+        self.video_player = VideoPlayerWidget(self)
+        self.video_player.playback_time_changed.connect(self._on_video_time_changed)
+        self.viewport_stack.addWidget(self.video_player)
+
+        container_layout.addWidget(self.viewport_stack, stretch=1)
 
         # 3. Metadata Footer Bar
         self.footer_layout = QHBoxLayout()
@@ -353,7 +475,7 @@ class FloatingPreviewHUD(QWidget):
         self.mode_label.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 500;")
         self.footer_layout.addWidget(self.mode_label)
 
-        # Zoom Level Badge
+        # Zoom / Video Status Badge
         self.zoom_badge = QLabel("100%", self)
         self.zoom_badge.setStyleSheet("""
             color: #A78BFA;
@@ -380,7 +502,7 @@ class FloatingPreviewHUD(QWidget):
         self.fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     def _init_shortcuts(self):
-        # Space: Pin / Unpin
+        # Space: Pin / Unpin or Play / Pause
         self.pin_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
         self.pin_shortcut.activated.connect(self.toggle_pin)
 
@@ -397,25 +519,33 @@ class FloatingPreviewHUD(QWidget):
         self.open_shortcut.activated.connect(self.open_current_file)
 
     def _on_zoom_changed(self, percent: int):
-        self.zoom_badge.setText(f"{percent}%")
-        if percent != 100:
-            self.zoom_badge.setStyleSheet("""
-                color: #F59E0B;
-                font-size: 10px;
-                font-weight: 700;
-                padding: 1px 5px;
-                border-radius: 3px;
-                background-color: rgba(245, 158, 11, 0.2);
-            """)
-        else:
-            self.zoom_badge.setStyleSheet("""
-                color: #A78BFA;
-                font-size: 10px;
-                font-weight: 600;
-                padding: 1px 5px;
-                border-radius: 3px;
-                background-color: rgba(167, 139, 250, 0.15);
-            """)
+        if not self.current_result or not self.current_result.is_video:
+            self.zoom_badge.setText(f"{percent}%")
+            if percent != 100:
+                self.zoom_badge.setStyleSheet("""
+                    color: #F59E0B;
+                    font-size: 10px;
+                    font-weight: 700;
+                    padding: 1px 5px;
+                    border-radius: 3px;
+                    background-color: rgba(245, 158, 11, 0.2);
+                """)
+            else:
+                self.zoom_badge.setStyleSheet("""
+                    color: #A78BFA;
+                    font-size: 10px;
+                    font-weight: 600;
+                    padding: 1px 5px;
+                    border-radius: 3px;
+                    background-color: rgba(167, 139, 250, 0.15);
+                """)
+
+    def _on_video_time_changed(self, pos_ms: int, dur_ms: int):
+        if self.current_result and self.current_result.is_video:
+            p_sec = int(pos_ms // 1000)
+            d_sec = int(dur_ms // 1000) if dur_ms > 0 else 0
+            time_str = f"{p_sec // 60}:{p_sec % 60:02d} / {d_sec // 60}:{d_sec % 60:02d}"
+            self.mode_label.setText(time_str)
 
     def display_preview(self, file_path: str, result: PreviewResult, cursor_x: int, cursor_y: int):
         self.current_file_path = file_path
@@ -428,7 +558,7 @@ class FloatingPreviewHUD(QWidget):
 
         fmt = result.format_name.upper()
         self.format_badge.setText(fmt)
-        fg_col, bg_col = FORMAT_COLORS.get(fmt, ("#F59E0B", "#451A03"))
+        fg_col, bg_col = FORMAT_COLORS.get(fmt, ("#38BDF8", "#0369A1"))
         self.format_badge.setStyleSheet(f"""
             background-color: {bg_col};
             color: {fg_col};
@@ -439,12 +569,39 @@ class FloatingPreviewHUD(QWidget):
             border: 1px solid {fg_col}55;
         """)
 
-        # Update Image Canvas with high-resolution master buffer
-        self.canvas.set_image(result.qimage, max_w=self.max_view_size, max_h=int(self.max_view_size * 0.75))
+        # Display Live Video vs Image Canvas
+        if result.is_video:
+            self.viewport_stack.setCurrentWidget(self.video_player)
+            self.video_player.set_video_dimensions(result.width, result.height, max_w=self.max_view_size, max_h=int(self.max_view_size * 0.75))
+            self.video_player.play_video(file_path)
+            self.dim_label.setText(result.dimensions_str)
+            self.mode_label.setText("Playing")
+            self.zoom_badge.setText("Live Video")
+            self.zoom_badge.setStyleSheet("""
+                color: #10B981;
+                font-size: 10px;
+                font-weight: 700;
+                padding: 1px 5px;
+                border-radius: 3px;
+                background-color: rgba(16, 185, 129, 0.2);
+            """)
+        else:
+            self.video_player.stop_video()
+            self.viewport_stack.setCurrentWidget(self.canvas)
+            self.canvas.set_image(result.qimage, max_w=self.max_view_size, max_h=int(self.max_view_size * 0.75))
+            self.dim_label.setText(result.dimensions_str)
+            self.mode_label.setText(result.mode)
+            self.zoom_badge.setText("100%")
+            self.zoom_badge.setStyleSheet("""
+                color: #A78BFA;
+                font-size: 10px;
+                font-weight: 600;
+                padding: 1px 5px;
+                border-radius: 3px;
+                background-color: rgba(167, 139, 250, 0.15);
+            """)
 
-        # Update Metadata
-        self.dim_label.setText(result.dimensions_str)
-        self.mode_label.setText(result.mode)
+        # Update Size Metadata
         self.size_label.setText(result.formatted_size)
 
         # Auto-adjust window size
@@ -496,6 +653,7 @@ class FloatingPreviewHUD(QWidget):
     def dismiss(self):
         self.is_pinned = False
         self.pin_state_changed.emit(False)
+        self.video_player.stop_video()
         self.canvas.reset_view()
         self.hide()
         self.visibility_changed.emit(False)
@@ -511,9 +669,10 @@ class FloatingPreviewHUD(QWidget):
             self.dismiss()
 
     def wheelEvent(self, event):
-        delta = event.angleDelta().y()
-        if delta > 0:
-            self.canvas.zoom(1.2)
-        elif delta < 0:
-            self.canvas.zoom(0.83)
-        event.accept()
+        if self.current_result and not self.current_result.is_video:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.canvas.zoom(1.2)
+            elif delta < 0:
+                self.canvas.zoom(0.83)
+            event.accept()

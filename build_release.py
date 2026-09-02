@@ -23,9 +23,11 @@ def find_iscc() -> str:
     return ""
 
 def build():
+    from src.core.config import APP_VERSION, APP_PUBLISHER
+    version_clean = APP_VERSION.lstrip("v")
     print("=" * 60)
-    print(" RawView v1.0.13 - Release & Installer Build Pipeline")
-    print(" Publisher: BlackBox THC")
+    print(f" RawView {APP_VERSION} - Release & Installer Build Pipeline")
+    print(f" Publisher: {APP_PUBLISHER}")
     print("=" * 60)
 
     # 1. Clean previous build artifacts
@@ -50,10 +52,14 @@ def build():
         "--collect-all=pymupdf",
         "--collect-all=psd_tools",
         "--collect-all=PyQt6",
+        "--collect-all=PyQt6.QtMultimedia",
+        "--collect-all=PyQt6.QtMultimediaWidgets",
         "--collect-all=reportlab",
         "--collect-all=rawpy",
         "--hidden-import=rawpy",
         "--hidden-import=PyQt6.QtSvg",
+        "--hidden-import=PyQt6.QtMultimedia",
+        "--hidden-import=PyQt6.QtMultimediaWidgets",
         "--hidden-import=pypdfium2",
         "--hidden-import=pymupdf",
         "--hidden-import=fitz",
@@ -82,7 +88,7 @@ def build():
     shutil.copytree(BASE_DIR / "assets", DIST_DIR / "RawView" / "assets", dirs_exist_ok=True)
 
     # 3. Compile Installer with Inno Setup
-    print("\n[2/2] Generating RawView_v1.0.13_Setup.exe with Inno Setup...")
+    print(f"\n[2/2] Generating RawView_{APP_VERSION}_Setup.exe with Inno Setup...")
     iscc_exe = find_iscc()
     if not iscc_exe:
         print("ERROR: ISCC.exe not found.")
@@ -92,14 +98,14 @@ def build():
     iscc_cmd = [iscc_exe, str(iss_path)]
     res_iss = subprocess.run(iscc_cmd, cwd=str(BASE_DIR / "installer"))
     if res_iss.returncode == 0:
-        setup_exe = INSTALLER_OUT / "RawView_v1.0.13_Setup.exe"
+        setup_exe = INSTALLER_OUT / f"RawView_{APP_VERSION}_Setup.exe"
         print("\n" + "=" * 60)
         print(f" SUCCESS! Installer created successfully:")
         print(f" -> {setup_exe}")
         if setup_exe.exists():
             size_mb = setup_exe.stat().st_size / (1024.0 * 1024.0)
             print(f" -> Size: {size_mb:.2f} MB")
-            print(f" -> Publisher: BlackBox THC")
+            print(f" -> Publisher: {APP_PUBLISHER}")
         print("=" * 60)
     else:
         print("ERROR: Inno Setup compilation failed.")

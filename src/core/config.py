@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v1.0.13"
+APP_VERSION = "v2.0.1"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v1.0.13"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v2.0.1"
 
 # Supported extensions
 SUPPORTED_EXTENSIONS = {
@@ -22,6 +22,19 @@ SUPPORTED_EXTENSIONS = {
     # Raster Images
     ".tif": "TIFF Image",
     ".tiff":"TIFF Image",
+    # Video Formats
+    ".mp4": "MPEG-4 Video",
+    ".mkv": "Matroska Video",
+    ".mov": "QuickTime Video",
+    ".avi": "AVI Video",
+    ".wmv": "Windows Media Video",
+    ".webm":"WebM Video",
+    ".m4v": "iTunes Video",
+    ".flv": "Flash Video",
+    ".ts":  "MPEG Transport Stream",
+    ".3gp": "3GPP Video",
+    ".mpg": "MPEG Video",
+    ".mpeg":"MPEG Video",
     # Adobe / Universal Digital Negative
     ".dng": "Digital Negative RAW",
     # Canon Camera RAW

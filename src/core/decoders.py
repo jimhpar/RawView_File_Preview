@@ -70,8 +70,8 @@ class ShellImageFactory:
         return None
 
 class PreviewResult:
-    """Standardized preview result holding the rendered image and metadata."""
-    def __init__(self, qimage: QImage, width: int, height: int, mode: str, format_name: str, file_size: int, extra_info: str = ""):
+    """Standardized preview result holding the rendered image/video and metadata."""
+    def __init__(self, qimage: QImage, width: int, height: int, mode: str, format_name: str, file_size: int, extra_info: str = "", is_video: bool = False, video_path: str = "", duration_ms: int = 0):
         self.qimage = qimage
         self.width = width
         self.height = height
@@ -79,6 +79,9 @@ class PreviewResult:
         self.format_name = format_name
         self.file_size = file_size
         self.extra_info = extra_info
+        self.is_video = is_video
+        self.video_path = video_path
+        self.duration_ms = duration_ms
 
     @property
     def formatted_size(self) -> str:
@@ -91,9 +94,50 @@ class PreviewResult:
 
     @property
     def dimensions_str(self) -> str:
+        if self.is_video:
+            if self.width > 0 and self.height > 0:
+                return f"{self.width} × {self.height} px"
+            return "Video"
         if self.width > 0 and self.height > 0:
             return f"{self.width} × {self.height} px"
         return "Vector"
+
+    @property
+    def duration_str(self) -> str:
+        if self.duration_ms <= 0:
+            return ""
+        total_sec = int(self.duration_ms // 1000)
+        mins = total_sec // 60
+        secs = total_sec % 60
+        hours = mins // 60
+        mins = mins % 60
+        if hours > 0:
+            return f"{hours}:{mins:02d}:{secs:02d}"
+        return f"{mins}:{secs:02d}"
+
+def extract_xmp_image(file_path: str, max_scan_bytes: int = 2 * 1024 * 1024) -> QImage | None:
+    """Fast, memory-efficient scanner that extracts embedded <xmpGImg:image> JPEG thumbnail."""
+    try:
+        size = os.path.getsize(file_path)
+        with open(file_path, "rb") as f:
+            # Check header (first 2MB)
+            chunk = f.read(max_scan_bytes)
+            m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', chunk)
+            if not m and size > max_scan_bytes:
+                # Check trailer (last 2MB)
+                f.seek(max(0, size - max_scan_bytes))
+                chunk = f.read(max_scan_bytes)
+                m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', chunk)
+
+            if m:
+                b64_data = m.group(1).replace(b'&#xA;', b'').replace(b'\n', b'').replace(b'\r', b'').replace(b' ', b'').replace(b'\t', b'')
+                raw_bytes = base64.b64decode(b64_data)
+                qim = QImage.fromData(QByteArray(raw_bytes))
+                if not qim.isNull() and qim.width() > 10 and qim.height() > 10:
+                    return qim
+    except Exception:
+        pass
+    return None
 
 def pil_to_qimage(pil_img: Image.Image) -> QImage:
     """Converts a PIL Image to a QImage directly in memory."""
@@ -223,27 +267,17 @@ class AiDecoder:
         # If elements are outside the artboard, the PDF stream WILL clip them. 
         # The ONLY way to see the full workspace is the XMP thumbnail.
         if prefer_xmp:
-            try:
-                with open(file_path, "rb") as f:
-                    data = f.read()
-
-                m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', data)
-                if m:
-                    b64_data = m.group(1).replace(b'&#xA;', b'').replace(b'\n', b'').replace(b'\r', b'').replace(b' ', b'').replace(b'\t', b'')
-                    raw_bytes = base64.b64decode(b64_data)
-                    qim = QImage.fromData(QByteArray(raw_bytes))
-                    if not qim.isNull():
-                        return PreviewResult(
-                            qimage=qim,
-                            width=qim.width(),
-                            height=qim.height(),
-                            mode="RGB (Full Workspace)",
-                            format_name="AI",
-                            file_size=size,
-                            extra_info="Full Canvas Workspace"
-                        )
-            except Exception:
-                pass
+            qim = extract_xmp_image(file_path)
+            if qim and not qim.isNull():
+                return PreviewResult(
+                    qimage=qim,
+                    width=qim.width(),
+                    height=qim.height(),
+                    mode="RGB (Full Workspace)",
+                    format_name="AI",
+                    file_size=size,
+                    extra_info="Full Canvas Workspace"
+                )
 
         # 2. Native Windows Shell Handler (Extracts complete workspace canvas & all artboards in ~40ms)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
@@ -314,27 +348,17 @@ class AiDecoder:
             pass
 
         # 5. Search for XMP embedded full workspace preview (<xmpGImg:image>) as last resort
-        try:
-            with open(file_path, "rb") as f:
-                data = f.read()
-
-            m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', data)
-            if m:
-                b64_data = m.group(1).replace(b'&#xA;', b'').replace(b'\n', b'').replace(b'\r', b'').replace(b' ', b'').replace(b'\t', b'')
-                raw_bytes = base64.b64decode(b64_data)
-                qim = QImage.fromData(QByteArray(raw_bytes))
-                if not qim.isNull():
-                    return PreviewResult(
-                        qimage=qim,
-                        width=qim.width(),
-                        height=qim.height(),
-                        mode="RGB (Workspace Thumbnail)",
-                        format_name="AI",
-                        file_size=size,
-                        extra_info="Full Canvas Workspace"
-                    )
-        except Exception:
-            pass
+        qim = extract_xmp_image(file_path)
+        if qim and not qim.isNull():
+            return PreviewResult(
+                qimage=qim,
+                width=qim.width(),
+                height=qim.height(),
+                mode="RGB (Workspace Thumbnail)",
+                format_name="AI",
+                file_size=size,
+                extra_info="Full Canvas Workspace"
+            )
 
         raise RuntimeError("AI file has no workspace thumbnail or PDF compatibility stream.")
 
@@ -344,29 +368,17 @@ class EpsDecoder:
     def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
         size = os.path.getsize(file_path)
 
-        # 1. Native Windows Shell Handler (Extracts full artwork in high resolution)
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
-        if shell_qim and not shell_qim.isNull():
-            return PreviewResult(
-                qimage=shell_qim,
-                width=shell_qim.width(),
-                height=shell_qim.height(),
-                mode="Full Artwork",
-                format_name="EPS",
-                file_size=size
-            )
-
-        # 2. Binary EPS header (0xC5D0D3C6) with embedded TIFF preview (Hardware-accelerated)
+        # 1. Binary EPS header (0xC5D0D3C6) with embedded TIFF preview (Sub-millisecond real artwork)
         try:
             with open(file_path, "rb") as f:
                 header = f.read(32)
                 if len(header) >= 30 and header[:4] in (b"\xC5\xD0\xD3\xC6", b"\xC6\xD3\xD0\xC5"):
                     tiff_offset, tiff_length = struct.unpack("<II", header[20:28])
-                    if tiff_offset > 0 and tiff_length > 0:
+                    if tiff_offset > 0 and tiff_length > 0 and (tiff_offset + tiff_length) <= size:
                         f.seek(tiff_offset)
                         tiff_bytes = f.read(tiff_length)
                         qim = QImage.fromData(QByteArray(tiff_bytes))
-                        if not qim.isNull():
+                        if not qim.isNull() and qim.width() > 10 and qim.height() > 10:
                             return PreviewResult(
                                 qimage=qim,
                                 width=qim.width(),
@@ -378,28 +390,19 @@ class EpsDecoder:
         except Exception:
             pass
 
-        # 3. Check for embedded XMP workspace preview in EPS (<xmpGImg:image>)
-        try:
-            with open(file_path, "rb") as f:
-                data = f.read()
-            m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', data)
-            if m:
-                b64_data = m.group(1).replace(b'&#xA;', b'').replace(b'\n', b'').replace(b'\r', b'').replace(b' ', b'').replace(b'\t', b'')
-                raw_bytes = base64.b64decode(b64_data)
-                qim = QImage.fromData(QByteArray(raw_bytes))
-                if not qim.isNull():
-                    return PreviewResult(
-                        qimage=qim,
-                        width=qim.width(),
-                        height=qim.height(),
-                        mode="Full Artwork (XMP)",
-                        format_name="EPS",
-                        file_size=size
-                    )
-        except Exception:
-            pass
+        # 2. Check for embedded XMP workspace preview in EPS (<xmpGImg:image>)
+        qim = extract_xmp_image(file_path)
+        if qim and not qim.isNull():
+            return PreviewResult(
+                qimage=qim,
+                width=qim.width(),
+                height=qim.height(),
+                mode="Full Artwork (XMP)",
+                format_name="EPS",
+                file_size=size
+            )
 
-        # 4. If Ghostscript is present, render via Pillow
+        # 3. If Ghostscript is present, render via Pillow
         if GHOSTSCRIPT_AVAILABLE:
             try:
                 with Image.open(file_path) as img:
@@ -417,7 +420,7 @@ class EpsDecoder:
             except Exception:
                 pass
 
-        # Parse BoundingBox and Creator metadata from header lines
+        # 4. Parse BoundingBox and Creator metadata from header lines for clean card fallback
         bbox_w, bbox_h = 600, 400
         creator = ""
         title = ""
@@ -667,6 +670,37 @@ class SvgDecoder:
             file_size=size
         )
 
+class VideoDecoder:
+    """Ultra-fast decoder and metadata extractor for all major video formats."""
+    @staticmethod
+    def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
+        size = os.path.getsize(file_path)
+        ext = Path(file_path).suffix.lower()
+        fmt_name = ext.replace(".", "").upper()
+
+        # Native Windows Shell Video Thumbnail
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=False)
+        
+        w = shell_qim.width() if shell_qim else 1920
+        h = shell_qim.height() if shell_qim else 1080
+
+        if not shell_qim or shell_qim.isNull():
+            card_w, card_h = 640, 360
+            shell_qim = QImage(card_w, card_h, QImage.Format.Format_ARGB32_Premultiplied)
+            shell_qim.fill(QColor(15, 23, 42))
+
+        return PreviewResult(
+            qimage=shell_qim,
+            width=w,
+            height=h,
+            mode="Video Stream",
+            format_name=fmt_name,
+            file_size=size,
+            is_video=True,
+            video_path=file_path,
+            extra_info="Live Video"
+        )
+
 class DecoderManager:
     """Master decoder dispatching files to the appropriate zero-lag engine."""
     DECODERS = {
@@ -680,6 +714,19 @@ class DecoderManager:
         ".svgz": SvgDecoder,
         # PDF
         ".pdf": PdfDecoder,
+        # Video Formats
+        ".mp4": VideoDecoder,
+        ".mkv": VideoDecoder,
+        ".mov": VideoDecoder,
+        ".avi": VideoDecoder,
+        ".wmv": VideoDecoder,
+        ".webm": VideoDecoder,
+        ".m4v": VideoDecoder,
+        ".flv": VideoDecoder,
+        ".ts": VideoDecoder,
+        ".3gp": VideoDecoder,
+        ".mpg": VideoDecoder,
+        ".mpeg": VideoDecoder,
         # TIFF
         ".tif": TiffDecoder,
         ".tiff": TiffDecoder,

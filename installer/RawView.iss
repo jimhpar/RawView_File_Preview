@@ -1,8 +1,8 @@
-; Inno Setup Script for RawView v1.0.13
+; Inno Setup Script for RawView v2.0.1
 ; Installs into C:\Program Files\RawView with Windows Boot Autostart & Clean Uninstallation
 
 #define MyAppName "RawView"
-#define MyAppVersion "1.0.13"
+#define MyAppVersion "2.0.1"
 #define MyAppPublisher "BlackBox THC"
 #define MyAppURL "https://github.com/blackboxthc/rawview"
 #define MyAppExeName "RawView.exe"
@@ -19,7 +19,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\dist_installer
-OutputBaseFilename=RawView_v1.0.13_Setup
+OutputBaseFilename=RawView_v2.0.1_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
