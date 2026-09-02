@@ -1,47 +1,36 @@
-# 🚀 RawView v2.0.1 Release Notes
+# 🚀 RawView v2.0.2 Release Notes
 
-**RawView v2.0.1** is a major feature and performance release that introduces **Instant Live Video Hover Playback**, resolves **EPS artboard-clipping for full-workspace artworks**, fixes **Settings dialog typography**, and enhances **Windows Explorer hidden-extension disambiguation**.
-
----
-
-## 🌟 What's New & Key Highlights
-
-### 🎬 1. Instant Live Video Hover Playback
-- **Zero-Lag Hover Playback**: Hovering the cursor over any supported video file in Windows Explorer, Desktop, or open/save file dialogs instantly plays a smooth, hardware-accelerated looping preview.
-- **Muted Looping Audio**: Video audio is muted by default to ensure unobtrusive background browsing.
-- **Supported Formats**: `.mp4`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.webm`, `.flv`, `.m4v`, `.ts`, `.3gp`, `.mpg`, `.mpeg`.
-- **Live Video Player HUD**:
-  - Micro progress bar indicating real-time playback position.
-  - Video duration and current playback time display (`0:12 / 1:45`).
-  - Resolution badge (e.g., `1920 × 1080 px`, `4K`, `720p`).
-  - Color-coded format badges (`MP4`, `MKV`, `MOV`, `AVI`, `WEBM`).
-- **Interactive Controls**: Press `Space` to pin the preview and toggle Play / Pause.
-- **Zero Resource Leakage**: Hardware video decoding pipelines and audio resources are immediately released on unhover/dismiss.
+**RawView v2.0.2** brings a critical fix for **Windows Explorer Blank Space Hover Filtering**, introduces the **7-Day Unlimited Free Trial Engine**, integrates **Offline Hardware ID Machine-Locked 50 TK Pro Licensing**, and adds direct **bKash & WhatsApp Purchase Support**.
 
 ---
 
-### 🎨 2. Uncropped EPS Full Artwork Preview Fix
-- **Full Workspace Preservation**: Fixed an issue where Adobe Illustrator EPS files with graphics extending outside the artboard (e.g., sportswear jersey sleeves, print layout dies, title splashes) had their edges cropped by the embedded TIFF preview.
-- **XMP Canvas Extraction**: Prioritizes the unclipped **XMP Full Workspace Canvas** (`<xmpGImg:image>`) to ensure 100% of the vector drawing is visible.
-- **Dynamic Aspect Ratio Fitting**: The preview HUD dynamically auto-fits wide graphics (e.g., 2.5:1 ratio jerseys) and tall posters without clipping or distortion.
+## 🌟 What's New in v2.0.2
+
+### 🎯 1. Fixed Blank Space / Folder Background Hover Bug
+- **Precise Item Detection**: Resolved an issue where hovering the cursor over empty whitespace / background areas of a folder window in Windows Explorer would inadvertently trigger a preview if the folder name matched any file inside.
+- **Strict Row Containment**: The hover engine now requires the cursor to be directly inside a valid file item (`ListItemControl`, `DataItemControl`, or `TreeItemControl`). Moving into blank background space immediately dismisses any active preview without ghosting or lingering previews.
 
 ---
 
-### 🔍 3. Intelligent File Hover & Extension Disambiguation
-- **Hidden Extension Resolution**: When Windows Explorer hides file extensions, RawView now cross-references row `Type` descriptions (*e.g., "PDF Document", "Encapsulated PostScript", "MP4 Video"*) and file sizes to accurately open the correct preview when identically named files reside in the same folder.
-- **Active Explorer COM Binding**: Resolves current folder paths and focused items directly from the active Explorer window for pinpoint accuracy.
-- **Tighter Row Boundaries**: Reduced vertical hover bounding box buffer to 4px for instant switching between adjacent rows in Details view.
+### ⏳ 2. 7-Day Unlimited Free Trial Engine
+- **100% Unrestricted Access**: All features (Photoshop PSD/PSB, Illustrator AI, EPS, PDF, Camera RAW, TIFF, SVG, Live Video Playback, Deep Zoom) are completely unlocked for the first 7 days.
+- **Subtle Trial Countdown**: The footer cleanly displays `⏳ Trial: Xd left`.
+- **Glassmorphic Pro Card (Day 8+)**: When the trial concludes, hovering over files displays an upgrade prompt with the customer's Machine Code, bKash payment info, and direct WhatsApp support launcher.
 
 ---
 
-### ⚙️ 4. Settings Dialog Typography & UI Redesign
-- **Fixed Text Squishing Bug**: Resolved a CSS styling issue where checkbox text labels were vertically compressed and illegible.
-- **Expanded Layout**: Increased dialog dimensions to `540 × 680 px` for optimal readability and spacing.
-- **Categorized Format Selection**:
-  - **Graphics & Design Formats**: PSD, PSB, AI, EPS, PDF, TIFF, SVG, Camera RAW
-  - **Live Video Formats**: MP4, MKV, MOV, AVI, WebM, WMV, FLV, TS
-- **Hover Responsiveness Slider**: Configurable settle dwell times (40ms – 350ms).
-- **Cache Management**: One-click thumbnail cache size inspection and clearing.
+### 🔐 3. Hardware ID Machine-Locked 50 TK Offline Licensing
+- **Windows MachineGuid Cryptography**: Automatically binds licenses to unique hardware machine codes (`RV-XXXX-XXXX-XXXX`).
+- **HMAC-SHA256 Signatures**: Zero server dependency, 100% offline, zero-latency cryptographic verification.
+- **Anti-Piracy**: A license key generated for one PC cannot be shared or used on any other machine.
+- **Lifetime Pro**: Once activated, the license persists permanently across app updates and reboots.
+
+---
+
+### 💳 4. Direct bKash & WhatsApp Purchase Integration
+- **bKash Personal (50 TK)**: `01756678087` with a 1-click **[📋 Copy bKash]** button.
+- **WhatsApp Support**: `+1 (202) 780-6050` with a 1-click **[💬 Open WhatsApp]** button that opens WhatsApp with the customer's Machine Code pre-filled.
+- **Settings Dialog Pro Section**: Clean 4-step guide for purchasing, copying codes, and activating license keys.
 
 ---
 
@@ -60,17 +49,7 @@
 
 ---
 
-## 📦 Downloads & Verification
-
-| Asset | Details | Direct Link |
-| :--- | :--- | :--- |
-| **Setup Installer** | Standalone 64-bit Windows Setup (~121.95 MB) | `RawView_v2.0.1_Setup.exe` |
-| **Publisher** | BlackBox THC | Certified Release |
-| **Source Code** | Git branch `main` | [GitHub Repository](https://github.com/jimhpar/RawView_File_Preview) |
-
----
-
-## 🛠️ System Requirements
-- **OS**: Windows 10 / Windows 11 (64-bit)
-- **Architecture**: x86_64 / x64
-- **Dependencies**: None (self-contained standalone executable)
+## 📦 Installer Package
+- **Installer**: `dist_installer/RawView_v2.0.2_Setup.exe` (~121.95 MB)
+- **Target OS**: Windows 10 & Windows 11 (64-bit)
+- **Publisher**: BlackBox THC

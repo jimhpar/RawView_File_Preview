@@ -281,9 +281,10 @@ class ExplorerHoverMonitor(QObject):
             else:
                 self._clear_hover()
 
-    def _get_active_explorer_context(self, x: int, y: int) -> tuple[str, str, list[str]]:
+    def _get_active_explorer_context(self, x: int, y: int, expected_folder_name: str = "") -> tuple[str, str, list[str]]:
         """
-        Queries the exact Shell window under the mouse cursor.
+        Queries the exact Shell window/tab under the mouse cursor.
+        Matches the active tab by HWND and folder name for Windows 11 tabbed Explorer.
         Returns (active_folder_path, focused_item_path, selected_item_paths).
         """
         active_folder = ""
@@ -298,39 +299,60 @@ class ExplorerHoverMonitor(QObject):
             
             pythoncom.CoInitialize()
             shell = win32com.client.Dispatch("Shell.Application")
+            
+            matching_windows = []
             for w in shell.Windows():
                 try:
                     w_hwnd = getattr(w, "HWND", 0)
                     if w_hwnd == root_hwnd or w_hwnd == hwnd:
-                        url = str(getattr(w, "LocationURL", ""))
-                        doc_path = ""
-                        if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
-                            doc_path = str(w.Document.Folder.Self.Path)
-                        
-                        active_folder = parse_shell_url(url) or parse_shell_url(doc_path)
-
-                        # Check Focused / Selected Items
-                        if hasattr(w, "Document"):
-                            doc = w.Document
-                            try:
-                                focused = getattr(doc, "FocusedItem", None)
-                                if focused and hasattr(focused, "Path"):
-                                    focused_path = str(focused.Path)
-                            except Exception:
-                                pass
-                            
-                            try:
-                                sel = doc.SelectedItems()
-                                if sel:
-                                    for i in range(min(sel.Count, 10)):
-                                        s_item = sel.Item(i)
-                                        if hasattr(s_item, "Path"):
-                                            selected_paths.append(str(s_item.Path))
-                            except Exception:
-                                pass
-                        break
+                        matching_windows.append(w)
                 except Exception:
                     continue
+
+            # If multiple tabs match the same root window, find the one matching expected_folder_name
+            target_w = None
+            if matching_windows:
+                if len(matching_windows) == 1 or not expected_folder_name:
+                    target_w = matching_windows[0]
+                else:
+                    clean_expected = expected_folder_name.strip().lower()
+                    for w in matching_windows:
+                        loc_name = str(getattr(w, "LocationName", "")).strip().lower()
+                        loc_url = parse_shell_url(str(getattr(w, "LocationURL", ""))).lower()
+                        if loc_name == clean_expected or loc_url.endswith(clean_expected) or clean_expected in loc_url:
+                            target_w = w
+                            break
+                    if not target_w:
+                        target_w = matching_windows[0]
+
+            if target_w:
+                url = str(getattr(target_w, "LocationURL", ""))
+                doc_path = ""
+                if hasattr(target_w, "Document") and hasattr(target_w.Document, "Folder"):
+                    doc_path = str(target_w.Document.Folder.Self.Path)
+                
+                active_folder = parse_shell_url(url) or parse_shell_url(doc_path)
+
+                # Check Focused / Selected Items
+                if hasattr(target_w, "Document"):
+                    doc = target_w.Document
+                    try:
+                        focused = getattr(doc, "FocusedItem", None)
+                        if focused and hasattr(focused, "Path"):
+                            focused_path = str(focused.Path)
+                    except Exception:
+                        pass
+                    
+                    try:
+                        sel = doc.SelectedItems()
+                        if sel:
+                            for i in range(min(sel.Count, 10)):
+                                s_item = sel.Item(i)
+                                if hasattr(s_item, "Path"):
+                                    selected_paths.append(str(s_item.Path))
+                    except Exception:
+                        pass
+
         except Exception:
             pass
         return active_folder, focused_path, selected_paths
@@ -338,31 +360,33 @@ class ExplorerHoverMonitor(QObject):
     def _get_candidate_folders(self, priority_folder: str = "") -> list:
         """Retrieves all active folder paths and FTP locations from Explorer windows and Desktop."""
         folders = []
-        if priority_folder:
+        if priority_folder and (priority_folder.startswith("ftp://") or priority_folder.startswith("ftps://") or os.path.isdir(priority_folder)):
             folders.append(priority_folder)
 
-        try:
-            pythoncom.CoInitialize()
-            shell = win32com.client.Dispatch("Shell.Application")
-            for w in shell.Windows():
-                try:
-                    url = str(getattr(w, "LocationURL", ""))
-                    doc_path = ""
-                    if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
-                        doc_path = str(w.Document.Folder.Self.Path)
-                    
-                    parsed = parse_shell_url(url)
-                    if parsed and (parsed.startswith("ftp://") or parsed.startswith("ftps://") or os.path.isdir(parsed)) and parsed not in folders:
-                        folders.append(parsed)
+        # Only expand other folders if priority_folder is not available
+        if not folders:
+            try:
+                pythoncom.CoInitialize()
+                shell = win32com.client.Dispatch("Shell.Application")
+                for w in shell.Windows():
+                    try:
+                        url = str(getattr(w, "LocationURL", ""))
+                        doc_path = ""
+                        if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
+                            doc_path = str(w.Document.Folder.Self.Path)
+                        
+                        parsed = parse_shell_url(url)
+                        if parsed and (parsed.startswith("ftp://") or parsed.startswith("ftps://") or os.path.isdir(parsed)) and parsed not in folders:
+                            folders.append(parsed)
 
-                    if doc_path:
-                        parsed_doc = parse_shell_url(doc_path)
-                        if (parsed_doc.startswith("ftp://") or parsed_doc.startswith("ftps://") or os.path.isdir(parsed_doc)) and parsed_doc not in folders:
-                            folders.append(parsed_doc)
-                except Exception:
-                    continue
-        except Exception:
-            pass
+                        if doc_path:
+                            parsed_doc = parse_shell_url(doc_path)
+                            if (parsed_doc.startswith("ftp://") or parsed_doc.startswith("ftps://") or os.path.isdir(parsed_doc)) and parsed_doc not in folders:
+                                folders.append(parsed_doc)
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
         for dp in self.desktop_paths:
             if dp not in folders and os.path.isdir(dp):
@@ -384,89 +408,75 @@ class ExplorerHoverMonitor(QObject):
             except Exception:
                 pass
 
-            # 1. Query active Explorer COM context under cursor
-            priority_folder, focused_path, selected_paths = self._get_active_explorer_context(x, y)
+            # Find parent list container name (e.g. "polo", "Pos_Dev", "Design", etc.)
+            folder_hint = ""
+            p = row_control.GetParentControl()
+            p_depth = 0
+            while p and p_depth < 6:
+                if p.Name and p.ControlTypeName in ("ListControl", "TreeControl", "PaneControl", "WindowControl"):
+                    folder_hint = p.Name
+                    break
+                p = p.GetParentControl()
+                p_depth += 1
 
-            # 2. Extract rich row context (Name, Type column, Size column, Tooltip)
+            # 1. Query active Explorer COM context under cursor for this specific tab
+            priority_folder, focused_path, selected_paths = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)
+
+            # Extract Name & attributes strictly from the item row and its children
             names_to_try = []
             type_hints = []
             size_hints = []
-            
-            curr = elem
-            depth = 0
-            row_control = None
 
-            while curr and depth < 8:
-                name = curr.Name
-                if name:
-                    names_to_try.append(name)
-                
-                # Check help text / tooltip (e.g. "Type: Microsoft Edge PDF Document\nSize: 856 KB")
-                help_txt = getattr(curr, 'HelpText', '')
-                if help_txt:
-                    names_to_try.append(help_txt)
-                    type_hints.append(help_txt)
-                    size_hints.append(help_txt)
+            if row_control.Name:
+                names_to_try.append(row_control.Name)
+            row_help = getattr(row_control, 'HelpText', '')
+            if row_help:
+                names_to_try.append(row_help)
+                type_hints.append(row_help)
+                size_hints.append(row_help)
+            row_item_type = getattr(row_control, 'ItemType', '')
+            if row_item_type:
+                type_hints.append(row_item_type)
 
-                item_type = getattr(curr, 'ItemType', '')
-                if item_type:
-                    type_hints.append(item_type)
+            # Inspect all child columns of this specific item row (Name, Type, Size)
+            try:
+                for child in row_control.GetChildren():
+                    c_name = child.Name
+                    c_auto_id = getattr(child, "AutomationId", "")
+                    c_help = getattr(child, "HelpText", "")
+                    c_type = getattr(child, "ItemType", "")
 
-                # Check if this control is the full row (ListItem / DataItem / TreeItem)
-                if curr.ControlTypeName in ("ListItemControl", "DataItemControl", "TreeItemControl"):
-                    row_control = curr
-                    try:
-                        row_r = curr.BoundingRectangle
-                        if row_r:
-                            bounding_box = (row_r.left, row_r.top, row_r.right, row_r.bottom)
-                    except Exception:
-                        pass
-                    break
-
-                if curr.ControlTypeName in ("WindowControl", "DesktopControl"):
-                    break
-                
-                curr = curr.GetParentControl()
-                depth += 1
-
-            # If we found the row container, inspect all child columns (Name, Date, Type, Size)
-            if row_control:
-                try:
-                    for child in row_control.GetChildren():
-                        c_name = child.Name
-                        c_auto_id = getattr(child, "AutomationId", "")
-                        c_help = getattr(child, "HelpText", "")
-                        c_type = getattr(child, "ItemType", "")
-
-                        if c_name:
-                            names_to_try.append(c_name)
-                            # Check if column is Type
-                            if any(k in c_name.lower() for k in ("document", "image", "file", "format", "postscript", "pdf", "artwork", "tiff", "raw")):
-                                type_hints.append(c_name)
-                            # Check if column is Size
-                            if any(k in c_name.lower() for k in ("kb", "mb", "gb", "bytes", "b")) and re.search(r"\d", c_name):
-                                size_hints.append(c_name)
-                        
-                        if c_auto_id == "System.ItemTypeText" and c_name:
+                    if c_name:
+                        names_to_try.append(c_name)
+                        # Check if column is Type
+                        if any(k in c_name.lower() for k in ("document", "image", "file", "format", "postscript", "pdf", "artwork", "tiff", "raw")):
                             type_hints.append(c_name)
-                        elif c_auto_id == "System.Size" and c_name:
+                        # Check if column is Size
+                        if any(k in c_name.lower() for k in ("kb", "mb", "gb", "bytes", "b")) and re.search(r"\d", c_name):
                             size_hints.append(c_name)
+                    
+                    if c_auto_id == "System.ItemTypeText" and c_name:
+                        type_hints.append(c_name)
+                    elif c_auto_id == "System.Size" and c_name:
+                        size_hints.append(c_name)
 
-                        if c_help:
-                            type_hints.append(c_help)
-                            size_hints.append(c_help)
-                        if c_type:
-                            type_hints.append(c_type)
-                except Exception:
-                    pass
+                    if c_help:
+                        type_hints.append(c_help)
+                        size_hints.append(c_help)
+                    if c_type:
+                        type_hints.append(c_type)
+            except Exception:
+                pass
 
             if not names_to_try:
                 return None, None
 
-            # 3. Fast match against COM focused/selected items if they match any name
+            # 3. Match against COM focused/selected items ONLY if they belong to priority_folder
             all_com_cands = ([focused_path] if focused_path else []) + selected_paths
             for com_path in all_com_cands:
                 if com_path and os.path.isfile(com_path):
+                    if priority_folder and not os.path.dirname(com_path).lower().startswith(priority_folder.lower()):
+                        continue
                     com_ext = Path(com_path).suffix.lower()
                     if com_ext in self.supported_exts_set:
                         com_stem = Path(com_path).stem.lower()
