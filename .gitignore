@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.venv/
+venv/
+env/
+.env
+
+# Build directories
+build/
+dist/
+dist_installer/
+*.spec
+
+# Temp and OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+
+# Images/Test output
+*.jpg
+*.png
+*.jpeg
+*.bmp
+test_*.py
+ai_test_*.jpg
+ai_xmp_*.jpg
