@@ -1,4 +1,4 @@
-# RawView (v0.1.1)
+# RawView (v1.0.13)
 
 **RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups when hovering over design and graphics files in Windows Explorer, Desktop, and File Dialogs.
 
@@ -9,8 +9,10 @@
 - **⚡ Zero-Lag Hover Previews**: Instant (<15ms) preview popups on cursor hover with configurable dwell time (80ms–300ms).
 - **🎨 Comprehensive Format Support**:
   - **PSD & PSB**: Adobe Photoshop files (instant composite & layer extraction)
-  - **AI**: Adobe Illustrator files (PDF vector rasterization & XMP previews)
+  - **AI**: Adobe Illustrator files (PDF vector rasterization & XMP workspace previews)
   - **EPS**: Encapsulated PostScript (binary header TIFF previews & vector cards)
+  - **PDF**: Portable Document Format (vector rasterization)
+  - **Camera RAW**: Ultra-fast embedded previews for DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, and 10+ other formats
   - **TIFF & TIF**: Multi-page, 16-bit, and high-dynamic range images
   - **SVG & SVGZ**: Scalable Vector Graphics with GPU rasterization
 - **💎 Glassmorphic Floating HUD**: Smooth fade-in animations, format badge color-coding, resolution, color mode, and file size badges.
@@ -34,10 +36,10 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v0.1.1_Setup.exe` installer:
+To compile the standalone `RawView_v1.0.13_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v0.1.1_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v1.0.13_Setup.exe`.
