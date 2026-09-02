@@ -24,7 +24,7 @@ def find_iscc() -> str:
 
 def build():
     print("=" * 60)
-    print(" RawView v1.0.12 - Release & Installer Build Pipeline")
+    print(" RawView v1.0.13 - Release & Installer Build Pipeline")
     print(" Publisher: BlackBox THC")
     print("=" * 60)
 
@@ -82,7 +82,7 @@ def build():
     shutil.copytree(BASE_DIR / "assets", DIST_DIR / "RawView" / "assets", dirs_exist_ok=True)
 
     # 3. Compile Installer with Inno Setup
-    print("\n[2/2] Generating RawView_v1.0.12_Setup.exe with Inno Setup...")
+    print("\n[2/2] Generating RawView_v1.0.13_Setup.exe with Inno Setup...")
     iscc_exe = find_iscc()
     if not iscc_exe:
         print("ERROR: ISCC.exe not found.")
@@ -92,7 +92,7 @@ def build():
     iscc_cmd = [iscc_exe, str(iss_path)]
     res_iss = subprocess.run(iscc_cmd, cwd=str(BASE_DIR / "installer"))
     if res_iss.returncode == 0:
-        setup_exe = INSTALLER_OUT / "RawView_v1.0.12_Setup.exe"
+        setup_exe = INSTALLER_OUT / "RawView_v1.0.13_Setup.exe"
         print("\n" + "=" * 60)
         print(f" SUCCESS! Installer created successfully:")
         print(f" -> {setup_exe}")

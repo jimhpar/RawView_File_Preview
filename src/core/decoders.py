@@ -45,7 +45,7 @@ _DeleteObject.restype = wintypes.BOOL
 class ShellImageFactory:
     """Hardware-accelerated Windows Shell image provider (utilizing native Adobe/system shell handlers)."""
     @staticmethod
-    def get_thumbnail(file_path: str, max_size: int = 1440) -> QImage | None:
+    def get_thumbnail(file_path: str, max_size: int = 1440, thumbnail_only: bool = False) -> QImage | None:
         try:
             if not os.path.exists(file_path):
                 return None
@@ -55,8 +55,11 @@ class ShellImageFactory:
             if hr != 0:
                 return None
             factory = comtypes.cast(p_item, POINTER(_IShellItemImageFactory))
-            # 0x00 = SIIGBF_RESIZETOFIT
-            hbm = factory.GetImage(_SIZE(max_size, max_size), 0x00)
+            
+            # 0x00 = SIIGBF_RESIZETOFIT, 0x08 = SIIGBF_THUMBNAILONLY
+            flags = 0x08 if thumbnail_only else 0x00
+            hbm = factory.GetImage(_SIZE(max_size, max_size), flags)
+            
             if hbm:
                 qim = QImage.fromHBITMAP(int(hbm))
                 _DeleteObject(hbm)
@@ -243,7 +246,7 @@ class AiDecoder:
                 pass
 
         # 2. Native Windows Shell Handler (Extracts complete workspace canvas & all artboards in ~40ms)
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull():
             return PreviewResult(
                 qimage=shell_qim,
@@ -342,7 +345,7 @@ class EpsDecoder:
         size = os.path.getsize(file_path)
 
         # 1. Native Windows Shell Handler (Extracts full artwork in high resolution)
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull():
             return PreviewResult(
                 qimage=shell_qim,

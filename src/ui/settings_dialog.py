@@ -153,7 +153,7 @@ class SettingsDialog(QDialog):
         self.format_cbs = {}
         active_fmts = set(self.config.get("supported_formats", SUPPORTED_EXTENSIONS.keys()))
 
-        ext_list = [".psd", ".psb", ".ai", ".eps", ".tiff", ".svg"]
+        ext_list = [".psd", ".psb", ".ai", ".eps", ".tiff", ".svg", ".pdf"]
         row, col = 0, 0
         for ext in ext_list:
             cb = QCheckBox(f"{ext.upper()} ({SUPPORTED_EXTENSIONS.get(ext, '')})", self)
