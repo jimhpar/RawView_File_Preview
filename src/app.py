@@ -159,6 +159,7 @@ class RawViewApp(QObject):
         self.tray_manager = TrayManager(self.config)
         self.tray_manager.config_updated.connect(self._on_config_updated)
         self.tray_manager.quit_requested.connect(self.shutdown)
+        self.preview_hud.open_settings_requested.connect(self.tray_manager.show_settings)
         self.tray_manager.show()
 
         # Start Hover Monitoring
