@@ -158,9 +158,9 @@ class ExplorerHoverMonitor(QObject):
         
         # Desktop candidate folders
         self.desktop_paths = [
-            os.path.expanduser("~/Desktop"),
-            os.path.expanduser("~/OneDrive/Desktop"),
-            "C:\\Users\\Public\\Desktop"
+            os.path.normpath(os.path.expanduser("~/Desktop")),
+            os.path.normpath(os.path.expanduser("~/OneDrive/Desktop")),
+            os.path.normpath("C:/Users/Public/Desktop")
         ]
 
         # Timer ticks every 35ms for instant settle detection
@@ -408,6 +408,34 @@ class ExplorerHoverMonitor(QObject):
             except Exception:
                 pass
 
+            # Ascend to find the row container (ListItem, DataItem, TreeItem)
+            row_control = None
+            curr = elem
+            depth = 0
+            while curr and depth < 8:
+                if curr.ControlTypeName in ("ListItemControl", "DataItemControl", "TreeItemControl"):
+                    row_control = curr
+                    try:
+                        row_r = curr.BoundingRectangle
+                        if row_r:
+                            bounding_box = (row_r.left, row_r.top, row_r.right, row_r.bottom)
+                    except Exception:
+                        pass
+                    break
+
+                if curr.ControlTypeName in ("WindowControl", "DesktopControl"):
+                    break
+                
+                curr = curr.GetParentControl()
+                depth += 1
+
+            # If no row container was found
+            if not row_control:
+                # If hovering over blank list canvas / pane / toolbar / scrollbar, ignore
+                if elem.ControlTypeName in ("ListControl", "PaneControl", "WindowControl", "ScrollBarControl", "HeaderControl", "HeaderItemControl", "ToolBarControl", "MenuBarControl", "GroupControl"):
+                    return None, None
+                row_control = elem
+
             # Find parent list container name (e.g. "polo", "Pos_Dev", "Design", etc.)
             folder_hint = ""
             p = row_control.GetParentControl()
@@ -427,6 +455,8 @@ class ExplorerHoverMonitor(QObject):
             type_hints = []
             size_hints = []
 
+            if elem != row_control and elem.Name:
+                names_to_try.append(elem.Name)
             if row_control.Name:
                 names_to_try.append(row_control.Name)
             row_help = getattr(row_control, 'HelpText', '')
