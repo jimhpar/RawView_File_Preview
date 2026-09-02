@@ -1,4 +1,4 @@
-# RawView (v2.0.1)
+# RawView (v2.0.2)
 
 **RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, and media files in Windows Explorer, Desktop, and File Dialogs.
 
@@ -16,6 +16,9 @@
   - **Camera RAW**: Ultra-fast embedded previews for DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, and 10+ other formats
   - **TIFF & TIF**: Multi-page, 16-bit, and high-dynamic range images
   - **SVG & SVGZ**: Scalable Vector Graphics with GPU rasterization
+- **📂 Multi-Tab & Blank Space Isolation**: Intelligent cursor containment prevents phantom previews when hovering over empty space or switching between multiple Explorer tabs.
+- **⏳ 7-Day Free Unlimited Trial**: Unrestricted access to 100% of all features and formats.
+- **🔐 Hardware ID Offline Pro Licensing**: Machine-locked cryptographic activation with zero server dependency.
 - **💎 Glassmorphic Floating HUD**: Smooth fade-in animations, format badge color-coding, resolution, color mode, duration, and file size badges.
 - **⚡ Multi-Tier Caching**:
   - **L1 In-Memory LRU Cache**: Sub-millisecond instant recall for active browsing
@@ -28,6 +31,7 @@
   - `Esc`: Close preview immediately
 - **⚙️ System Tray & Settings**:
   - Modern spacious settings dialog with categorized format toggles (Graphics vs Videos)
+  - Pro License activation hub with 1-click Machine Code copy and support links
   - Speed presets (Ultra-Fast 80ms, Fast 120ms, Relaxed 250ms)
   - Cache manager and Windows Boot Autostart
 - **📦 Clean Installer**: Installs into `C:\Program Files\RawView` with Start Menu & Desktop shortcuts.
@@ -36,10 +40,10 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v2.0.1_Setup.exe` installer:
+To compile the standalone `RawView_v2.0.2_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v2.0.1_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v2.0.2_Setup.exe`.
