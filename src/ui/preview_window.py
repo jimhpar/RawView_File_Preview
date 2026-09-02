@@ -346,7 +346,9 @@ class VideoPlayerWidget(QWidget):
         pos = self.player.position()
         self.playback_time_changed.emit(pos, dur_ms)
 
+from PyQt6.QtGui import QDesktopServices
 from src.core.licensing import get_license_status, get_machine_id
+from src.core.config import PAYMENT_INFO
 
 class TrialExpiredCard(QWidget):
     """Sleek glassmorphic card displayed when 7-day free trial expires."""
@@ -354,35 +356,35 @@ class TrialExpiredCard(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(460, 290)
+        self.setFixedSize(500, 360)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
 
-        # Title
+        # Title & Price Header
         title = QLabel("🔒 7-Day Free Trial Ended", self)
-        title.setStyleSheet("color: #FB7185; font-size: 15px; font-weight: 700;")
+        title.setStyleSheet("color: #FB7185; font-size: 16px; font-weight: 700;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        sub = QLabel("Unlock unlimited Lifetime Pro access for only 50 TK!", self)
-        sub.setStyleSheet("color: #E2E8F0; font-size: 12px; font-weight: 500;")
+        sub = QLabel("Unlock unlimited Lifetime Pro access for only <b>50 TK</b>!", self)
+        sub.setStyleSheet("color: #38BDF8; font-size: 13px; font-weight: 600;")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(sub)
 
-        # Machine Code Box
+        # 1. Machine Code Box
         mid_card = QFrame(self)
-        mid_card.setStyleSheet("background-color: rgba(30, 41, 59, 0.8); border: 1px solid #334155; border-radius: 8px; padding: 6px;")
+        mid_card.setStyleSheet("background-color: rgba(30, 41, 59, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 4px;")
         mid_layout = QHBoxLayout(mid_card)
-        mid_layout.setContentsMargins(8, 4, 8, 4)
+        mid_layout.setContentsMargins(10, 4, 10, 4)
 
-        mid_label = QLabel("Your Machine Code:", mid_card)
-        mid_label.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        mid_label = QLabel("1. Your Machine Code:", mid_card)
+        mid_label.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 600;")
         
         self.mid_text = QLabel(get_machine_id(), mid_card)
         self.mid_text.setStyleSheet("color: #38BDF8; font-weight: 700; font-family: monospace; font-size: 12px;")
 
-        copy_btn = QPushButton("📋 Copy", mid_card)
+        copy_btn = QPushButton("📋 Copy Code", mid_card)
         copy_btn.setStyleSheet("background-color: #0284C7; color: white; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600;")
         copy_btn.clicked.connect(self._copy_mid)
 
@@ -391,23 +393,55 @@ class TrialExpiredCard(QWidget):
         mid_layout.addWidget(copy_btn)
         layout.addWidget(mid_card)
 
-        # Instructions
-        inst = QLabel(
-            "1. Send <b>50 TK</b> via bKash / Nagad Personal: <b>017xxxxxxxx</b><br>"
-            "2. Send your <b>Machine Code</b> & TrxID via WhatsApp/SMS to get your Pro Key.",
-            self
-        )
-        inst.setStyleSheet("color: #CBD5E1; font-size: 11px; line-height: 1.4;")
-        inst.setWordWrap(True)
-        layout.addWidget(inst)
+        # 2. bKash Payment Box
+        bkash_card = QFrame(self)
+        bkash_card.setStyleSheet("background-color: rgba(30, 41, 59, 0.85); border: 1px solid #E11D48; border-radius: 8px; padding: 4px;")
+        bkash_layout = QHBoxLayout(bkash_card)
+        bkash_layout.setContentsMargins(10, 4, 10, 4)
 
-        # Action Buttons
+        bkash_label = QLabel("2. bKash Personal (50 TK):", bkash_card)
+        bkash_label.setStyleSheet("color: #FB7185; font-size: 11px; font-weight: 700;")
+
+        self.bkash_val = QLabel(PAYMENT_INFO.get("bkash_number", "01756678087"), bkash_card)
+        self.bkash_val.setStyleSheet("color: #FFFFFF; font-weight: 700; font-family: monospace; font-size: 12px;")
+
+        copy_bkash_btn = QPushButton("📋 Copy Number", bkash_card)
+        copy_bkash_btn.setStyleSheet("background-color: #E11D48; color: white; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600;")
+        copy_bkash_btn.clicked.connect(self._copy_bkash)
+
+        bkash_layout.addWidget(bkash_label)
+        bkash_layout.addWidget(self.bkash_val, stretch=1)
+        bkash_layout.addWidget(copy_bkash_btn)
+        layout.addWidget(bkash_card)
+
+        # 3. WhatsApp Support Link
+        wa_card = QFrame(self)
+        wa_card.setStyleSheet("background-color: rgba(30, 41, 59, 0.85); border: 1px solid #10B981; border-radius: 8px; padding: 4px;")
+        wa_layout = QHBoxLayout(wa_card)
+        wa_layout.setContentsMargins(10, 4, 10, 4)
+
+        wa_label = QLabel("3. WhatsApp Support:", wa_card)
+        wa_label.setStyleSheet("color: #34D399; font-size: 11px; font-weight: 700;")
+
+        wa_val = QLabel(PAYMENT_INFO.get("whatsapp_number", "+1 (202) 780-6050"), wa_card)
+        wa_val.setStyleSheet("color: #FFFFFF; font-weight: 600; font-size: 12px;")
+
+        open_wa_btn = QPushButton("💬 Open WhatsApp", wa_card)
+        open_wa_btn.setStyleSheet("background-color: #059669; color: white; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700;")
+        open_wa_btn.clicked.connect(self._open_whatsapp)
+
+        wa_layout.addWidget(wa_label)
+        wa_layout.addWidget(wa_val, stretch=1)
+        wa_layout.addWidget(open_wa_btn)
+        layout.addWidget(wa_card)
+
+        # Action Button to open settings
         btn_layout = QHBoxLayout()
-        activate_btn = QPushButton("⚡ Activate Lifetime Pro", self)
+        activate_btn = QPushButton("⚡ Enter License Key & Activate Pro", self)
         activate_btn.setStyleSheet("""
-            background-color: #059669;
+            background-color: #0284C7;
             color: #FFFFFF;
-            border: 1px solid #10B981;
+            border: 1px solid #38BDF8;
             border-radius: 6px;
             padding: 8px 16px;
             font-size: 12px;
@@ -421,6 +455,16 @@ class TrialExpiredCard(QWidget):
     def _copy_mid(self):
         mid = self.mid_text.text()
         QApplication.clipboard().setText(mid)
+
+    def _copy_bkash(self):
+        num = self.bkash_val.text()
+        QApplication.clipboard().setText(num)
+
+    def _open_whatsapp(self):
+        mid = self.mid_text.text()
+        msg = f"Hello! I sent 50 TK for RawView Lifetime Pro.\nMy Machine Code: {mid}"
+        url_str = f"https://wa.me/12027806050?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
+        QDesktopServices.openUrl(QUrl(url_str))
 
 class FloatingPreviewHUD(QWidget):
     """

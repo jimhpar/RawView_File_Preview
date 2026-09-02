@@ -6,9 +6,10 @@ from PyQt6.QtWidgets import (
     QLineEdit, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QColor, QPalette
+from PyQt6.QtGui import QIcon, QColor, QPalette, QDesktopServices
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
 from src.core.config import (
-    save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION
+    save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION, PAYMENT_INFO
 )
 from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import get_license_status, activate_license, get_machine_id
@@ -21,7 +22,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config.copy()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION} - Settings")
-        self.setFixedSize(540, 760)
+        self.setFixedSize(560, 840)
         self._init_style()
         self._init_ui()
 
@@ -107,7 +108,7 @@ class SettingsDialog(QDialog):
                 color: #F8FAFC;
                 border: 1px solid #334155;
                 border-radius: 6px;
-                padding: 7px 16px;
+                padding: 7px 14px;
                 font-size: 12px;
                 font-weight: 600;
             }
@@ -132,6 +133,24 @@ class SettingsDialog(QDialog):
             QPushButton#activateBtn:hover {
                 background-color: #047857;
             }
+            QPushButton#copyBkashBtn {
+                background-color: #E11D48;
+                border: 1px solid #F43F5E;
+                color: #FFFFFF;
+                font-weight: 600;
+            }
+            QPushButton#copyBkashBtn:hover {
+                background-color: #BE123C;
+            }
+            QPushButton#waBtn {
+                background-color: #059669;
+                border: 1px solid #34D399;
+                color: #FFFFFF;
+                font-weight: 600;
+            }
+            QPushButton#waBtn:hover {
+                background-color: #047857;
+            }
         """)
 
     def _init_ui(self):
@@ -140,9 +159,9 @@ class SettingsDialog(QDialog):
         main_layout.setSpacing(12)
 
         # 1. Pro License & Activation Section
-        lic_group = QGroupBox("RawView Pro License (50 TK)", self)
+        lic_group = QGroupBox("RawView Pro License (50 TK Lifetime)", self)
         lic_layout = QVBoxLayout(lic_group)
-        lic_layout.setContentsMargins(14, 14, 14, 12)
+        lic_layout.setContentsMargins(14, 12, 14, 12)
         lic_layout.setSpacing(8)
 
         lic_info = get_license_status()
@@ -161,7 +180,8 @@ class SettingsDialog(QDialog):
 
         # Machine ID Row
         mid_row = QHBoxLayout()
-        mid_label = QLabel("Machine Code:")
+        mid_label = QLabel("1. Machine Code:")
+        mid_label.setStyleSheet("font-weight: 600;")
         self.mid_val = QLineEdit(lic_info.get("machine_id", get_machine_id()))
         self.mid_val.setReadOnly(True)
         self.mid_val.setStyleSheet("color: #38BDF8; font-weight: bold; font-family: monospace;")
@@ -172,10 +192,44 @@ class SettingsDialog(QDialog):
         mid_row.addWidget(copy_mid_btn)
         lic_layout.addLayout(mid_row)
 
+        # bKash Payment Row
+        self.bkash_row_widget = QWidget()
+        bkash_row = QHBoxLayout(self.bkash_row_widget)
+        bkash_row.setContentsMargins(0, 0, 0, 0)
+        bkash_label = QLabel("2. bKash Personal (50 TK):")
+        bkash_label.setStyleSheet("color: #FB7185; font-weight: 700;")
+        self.bkash_val = QLineEdit(PAYMENT_INFO.get("bkash_number", "01756678087"))
+        self.bkash_val.setReadOnly(True)
+        self.bkash_val.setStyleSheet("color: #FFFFFF; font-weight: bold; font-family: monospace; border: 1px solid #E11D48;")
+        copy_bkash_btn = QPushButton("📋 Copy bKash")
+        copy_bkash_btn.setObjectName("copyBkashBtn")
+        copy_bkash_btn.clicked.connect(self._copy_bkash)
+        bkash_row.addWidget(bkash_label)
+        bkash_row.addWidget(self.bkash_val, stretch=1)
+        bkash_row.addWidget(copy_bkash_btn)
+        lic_layout.addWidget(self.bkash_row_widget)
+
+        # WhatsApp Support Row
+        self.wa_row_widget = QWidget()
+        wa_row = QHBoxLayout(self.wa_row_widget)
+        wa_row.setContentsMargins(0, 0, 0, 0)
+        wa_label = QLabel("3. WhatsApp Support:")
+        wa_label.setStyleSheet("color: #34D399; font-weight: 700;")
+        self.wa_val = QLineEdit(PAYMENT_INFO.get("whatsapp_number", "+1 (202) 780-6050"))
+        self.wa_val.setReadOnly(True)
+        self.wa_val.setStyleSheet("color: #FFFFFF; font-weight: 600; border: 1px solid #10B981;")
+        wa_btn = QPushButton("💬 Open WhatsApp")
+        wa_btn.setObjectName("waBtn")
+        wa_btn.clicked.connect(self._open_whatsapp)
+        wa_row.addWidget(wa_label)
+        wa_row.addWidget(self.wa_val, stretch=1)
+        wa_row.addWidget(wa_btn)
+        lic_layout.addWidget(self.wa_row_widget)
+
         # License Key Input Row (Active if not Pro)
         self.key_input_layout = QHBoxLayout()
         self.key_input = QLineEdit()
-        self.key_input.setPlaceholderText("Enter Lifetime Pro License Key (e.g. RVPRO-XXXX-XXXX-XXXX)...")
+        self.key_input.setPlaceholderText("4. Enter License Key (e.g. RVPRO-XXXX-XXXX-XXXX)...")
         self.activate_btn = QPushButton("⚡ Activate Pro")
         self.activate_btn.setObjectName("activateBtn")
         self.activate_btn.clicked.connect(self._do_activate_license)
@@ -185,7 +239,7 @@ class SettingsDialog(QDialog):
 
         # Payment / Purchase instructions note
         self.pay_note = QLabel(
-            "Send 50 TK via bKash / Nagad Personal: <b>017xxxxxxxx</b> (Ref: Your Machine Code), then paste key above."
+            "Send 50 TK via bKash Personal (Ref: Machine Code), send TrxID on WhatsApp to get your License Key."
         )
         self.pay_note.setStyleSheet("color: #94A3B8; font-size: 11px;")
         self.pay_note.setWordWrap(True)
@@ -334,6 +388,8 @@ class SettingsDialog(QDialog):
             self.status_badge.setStyleSheet("background-color: #064E3B; color: #34D399; border: 1px solid #10B981; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
             self.key_input.setVisible(False)
             self.activate_btn.setVisible(False)
+            self.bkash_row_widget.setVisible(False)
+            self.wa_row_widget.setVisible(False)
             self.pay_note.setText("Your copy of RawView is fully activated with Lifetime Pro access. Thank you!")
             self.pay_note.setStyleSheet("color: #34D399; font-size: 11px; font-weight: 600;")
         elif status == "TRIAL_ACTIVE":
@@ -342,16 +398,31 @@ class SettingsDialog(QDialog):
             self.status_badge.setStyleSheet("background-color: #0C4A6E; color: #38BDF8; border: 1px solid #0284C7; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
             self.key_input.setVisible(True)
             self.activate_btn.setVisible(True)
+            self.bkash_row_widget.setVisible(True)
+            self.wa_row_widget.setVisible(True)
         else:
             self.status_badge.setText("🔒 TRIAL EXPIRED (ACTIVATION REQUIRED)")
             self.status_badge.setStyleSheet("background-color: #4C0519; color: #FB7185; border: 1px solid #E11D48; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
             self.key_input.setVisible(True)
             self.activate_btn.setVisible(True)
+            self.bkash_row_widget.setVisible(True)
+            self.wa_row_widget.setVisible(True)
 
     def _copy_machine_id(self):
         mid = self.mid_val.text()
         QApplication.clipboard().setText(mid)
-        QMessageBox.information(self, "Copied", f"Machine Code '{mid}' copied to clipboard!\nSend this code to the seller via WhatsApp/SMS after 50 TK bKash/Nagad payment.")
+        QMessageBox.information(self, "Copied", f"Machine Code '{mid}' copied to clipboard!\nSend this code to WhatsApp (+1 202 780-6050) after sending 50 TK.")
+
+    def _copy_bkash(self):
+        num = self.bkash_val.text()
+        QApplication.clipboard().setText(num)
+        QMessageBox.information(self, "Copied", f"bKash Personal Number '{num}' copied to clipboard!\nSend 50 TK (Send Money) with your Machine Code as Reference.")
+
+    def _open_whatsapp(self):
+        mid = self.mid_val.text()
+        msg = f"Hello! I sent 50 TK for RawView Lifetime Pro.\nMy Machine Code: {mid}"
+        url_str = f"https://wa.me/12027806050?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
+        QDesktopServices.openUrl(QUrl(url_str))
 
     def _do_activate_license(self):
         key = self.key_input.text().strip()

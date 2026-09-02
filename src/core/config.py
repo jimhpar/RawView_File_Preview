@@ -66,6 +66,15 @@ SUPPORTED_EXTENSIONS = {
     ".x3f": "Sigma RAW"
 }
 
+# Payment & Support Information
+PAYMENT_INFO = {
+    "price_bdt": "50 TK",
+    "bkash_number": "01756678087",
+    "bkash_type": "Personal (Send Money)",
+    "whatsapp_number": "+1 (202) 780-6050",
+    "whatsapp_link": "https://wa.me/12027806050",
+}
+
 # Directories
 APPDATA_DIR = Path(os.environ.get("APPDATA", os.path.expanduser("~"))) / "RawView"
 CACHE_DIR = APPDATA_DIR / "cache"
