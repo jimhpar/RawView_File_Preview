@@ -1,10 +1,18 @@
-# 🚀 RawView v3.1.4 Release Notes
+# 🚀 RawView v3.1.5 Release Notes
 
-**RawView v3.1.4** delivers **Smart Linked Video & Footage Playback** for **Adobe After Effects (`.aep`)** and **Premiere Pro (`.prproj`)**, automatically playing matching rendered MP4/MOV output videos and timeline footage clips with instant hardware-accelerated video playback on hover.
+**RawView v3.1.5** fixes a critical video source binding bug where `QMediaPlayer` attempted to load raw `.aep` / `.prproj` binary project paths instead of the resolved linked MP4/MOV footage, restoring instant, smooth 60 FPS live video playback for Adobe projects.
 
 ---
 
-## 🌟 What's New in v3.1.4
+## 🌟 What's New in v3.1.5
+
+### 🎬 1. Fixed Video Player Source Binding
+* **Resolved Linked Video Playback Bug**: Fixed `FloatingPreviewHUD` to route the resolved `result.video_path` to `QMediaPlayer.setSource()`, eliminating black screen stalls on `.aep` and `.prproj` files.
+* **Instant Footage Playback**: Linked video footages and rendered outputs (`Render/`, `Output/`, `Stock/`) now play immediately upon mouse hover with live timeline tracking.
+
+---
+
+# 🚀 RawView v3.1.4 Release Notes
 
 ### 🎬 1. Smart Linked Video & Footage Playback
 * **Automatic Render & Output Resolution**: Discovers matching exported video files (`Render/`, `Output/`, `Export/`, or same directory) and plays them instantly in the preview HUD with 60 FPS muted looping.
@@ -122,6 +130,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v3.1.4_Setup.exe` (~122 MB)
+- **Installer**: `dist_installer/RawView_v3.1.5_Setup.exe` (~122 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC

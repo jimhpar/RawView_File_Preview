@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v3.1.4"
+APP_VERSION = "v3.1.5"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.1.4"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.1.5"
 
 # Supported extensions
 SUPPORTED_EXTENSIONS = {
