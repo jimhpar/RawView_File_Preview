@@ -498,7 +498,7 @@ class TrialExpiredCard(QWidget):
 
 class FloatingPreviewHUD(QWidget):
     """
-    Hardware-accelerated, glassmorphic floating preview window for RawView v3.1.1.
+    Hardware-accelerated, glassmorphic floating preview window for RawView v3.1.2.
     Seamlessly renders full-resolution images, documents, live video playback,
     and handles 7-day unlimited trial + Lifetime Pro activation states.
     """

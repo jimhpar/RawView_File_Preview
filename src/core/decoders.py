@@ -800,8 +800,10 @@ class OfficeDocDecoder:
             try:
                 import zipfile
                 with zipfile.ZipFile(file_path, 'r') as z:
+                    names = z.namelist()
+                    # A. Embedded document thumbnail
                     for thumb_name in ("docProps/thumbnail.jpeg", "docProps/thumbnail.jpg", "docProps/thumbnail.png"):
-                        if thumb_name in z.namelist():
+                        if thumb_name in names:
                             thumb_bytes = z.read(thumb_name)
                             qim = QImage.fromData(thumb_bytes)
                             if not qim.isNull() and qim.width() > 10:
@@ -815,7 +817,24 @@ class OfficeDocDecoder:
                                     extra_info="OpenXML Document"
                                 )
                     
-                    if "docProps/app.xml" in z.namelist():
+                    # B. Check for first slide/document embedded graphic
+                    media_files = [n for n in names if (n.startswith("ppt/media/") or n.startswith("word/media/") or n.startswith("xl/media/")) and n.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+                    if media_files:
+                        first_img_bytes = z.read(sorted(media_files)[0])
+                        qim = QImage.fromData(first_img_bytes)
+                        if not qim.isNull() and qim.width() > 60 and qim.height() > 60:
+                            return PreviewResult(
+                                qimage=qim,
+                                width=qim.width(),
+                                height=qim.height(),
+                                mode="RGB (Slide Visual)",
+                                format_name=fmt_name,
+                                file_size=size,
+                                extra_info="Embedded Media"
+                            )
+
+                    # C. Metadata parsing
+                    if "docProps/app.xml" in names:
                         app_xml = z.read("docProps/app.xml").decode("utf-8", errors="ignore")
                         import xml.etree.ElementTree as ET
                         root = ET.fromstring(app_xml)
@@ -832,7 +851,7 @@ class OfficeDocDecoder:
                                 if sheets:
                                     meta["sheets"] = ", ".join(sheets[:5])
                                     
-                    if "docProps/core.xml" in z.namelist():
+                    if "docProps/core.xml" in names:
                         core_xml = z.read("docProps/core.xml").decode("utf-8", errors="ignore")
                         import xml.etree.ElementTree as ET
                         root = ET.fromstring(core_xml)
@@ -845,8 +864,8 @@ class OfficeDocDecoder:
             except Exception:
                 pass
                 
-        # 2. Try Windows Shell Image Factory (Native Office Shell Provider)
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size)
+        # 2. Try Windows Shell Image Factory STRICTLY for actual visual thumbnails (thumbnail_only=True)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
             return PreviewResult(
                 qimage=shell_qim,
@@ -968,8 +987,8 @@ class AdobeProjectDecoder:
             except Exception:
                 pass
                 
-        # 2. Try Windows Shell Image Factory (Native Adobe Thumbnail Handler)
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size)
+        # 2. Try Windows Shell Image Factory STRICTLY for actual rendered project thumbnails (thumbnail_only=True)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
             return PreviewResult(
                 qimage=shell_qim,

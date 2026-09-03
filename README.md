@@ -1,4 +1,4 @@
-# RawView (v3.1.1)
+# RawView (v3.1.2)
 
 **RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, Microsoft Office files, and media projects in Windows Explorer, Desktop, and File Dialogs.
 
@@ -47,10 +47,10 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v3.1.1_Setup.exe` installer:
+To compile the standalone `RawView_v3.1.2_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v3.1.1_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v3.1.2_Setup.exe`.

@@ -1,10 +1,19 @@
-# 🚀 RawView v3.1.1 Release Notes
+# 🚀 RawView v3.1.2 Release Notes
 
-**RawView v3.1.1** is a landmark release introducing instant, hardware-accelerated preview popups for **Microsoft Office documents** (Word, Excel, PowerPoint, RTF, CSV) and **Adobe Creative Cloud video project files** (After Effects `.aep`, Premiere Pro `.prproj`) directly inside Windows Explorer, Desktop, and Open/Save dialogs.
+**RawView v3.1.2** delivers a refined preview experience for **Office Documents** and **Adobe Video Projects**, strictly eliminating generic/inverted application icons in favor of true embedded slide media and rich Creative Cloud info cards with deep document metadata.
 
 ---
 
-## 🌟 What's New in v3.1.1
+## 🌟 What's New in v3.1.2
+
+### 🎯 1. Eliminated Generic Application Icon Fallbacks
+* **Strict Visual Thumbnail Validation (`SIIGBF_THUMBNAILONLY`)**: Windows Shell image provider is now queried strictly for real visual page/slide thumbnails. Generic file association icons (such as upside-down Ae icons or blank paper icons) are blocked from display.
+* **Embedded Slide & Document Media Extraction**: Office files (`.docx`, `.pptx`) automatically inspect embedded slide images and graphics if standalone thumbnails are not stored by Office.
+* **High-Definition Creative Cloud & Office Cards**: When no visual thumbnail exists, RawView displays a dark branded overview card showing file name, sequence/document title, author, slide/sheet count, and file statistics.
+
+---
+
+# 🚀 RawView v3.1.1 Release Notes
 
 ### 📄 1. Microsoft Office & Document Previews
 * **Microsoft Word (`.docx`, `.doc`, `.docm`, `.dotx`, `.dot`, `.rtf`)**: Zero-lag embedded OpenXML thumbnail extraction with page count, word count, document title, and author information.
@@ -93,6 +102,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v3.1.1_Setup.exe` (~122 MB)
+- **Installer**: `dist_installer/RawView_v3.1.2_Setup.exe` (~122 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC
