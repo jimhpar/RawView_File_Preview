@@ -10,8 +10,10 @@ env/
 
 # Build directories
 build/
+build_admin/
 dist/
 dist_installer/
+dist_admin/
 *.spec
 
 # Temp and OS files
