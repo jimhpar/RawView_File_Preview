@@ -153,6 +153,7 @@ class ExplorerHoverMonitor(QObject):
         self.preview_is_pinned = False
         self.active_file_path = ""
         self.active_rect = None
+        self._last_resolved_pos = QPoint(-1, -1)
         self.space_key_down = False
         self.esc_key_down = False
         
@@ -221,13 +222,11 @@ class ExplorerHoverMonitor(QObject):
         x, y = cur_pos.x(), cur_pos.y()
         now = ctypes.windll.kernel32.GetTickCount()
 
-        dx = abs(x - self.last_pos.x())
-        dy = abs(y - self.last_pos.y())
-
-        if dx > 6 or dy > 6:
-            # Cursor moved significantly
+        if cur_pos != self.last_pos:
+            # Cursor is in motion
             self.last_pos = cur_pos
             self.settle_start_time = now
+            self._last_resolved_pos = QPoint(-1, -1)
 
             if self.preview_is_pinned:
                 # Keep preview active when pinned
@@ -240,23 +239,18 @@ class ExplorerHoverMonitor(QObject):
                     self._clear_hover()
             return
 
-        # Check if cursor drifted outside active bounding box even with micro-movements
-        if self.is_hover_active and self.active_rect:
-            left, top, right, bottom = self.active_rect
-            if x < left - 16 or x > right + 16 or y < top - 4 or y > bottom + 4:
-                self._clear_hover()
-                return
-
-        # Cursor is settled/dwelling: only resolve if not currently active
+        # Cursor is settled/dwelling: resolve once per settled position
         dwell_ms = now - self.settle_start_time
         if dwell_ms >= self.hover_delay_ms:
-            if not self.is_hover_active:
+            if cur_pos != getattr(self, "_last_resolved_pos", QPoint(-1, -1)):
+                self._last_resolved_pos = cur_pos
                 self._resolve_and_trigger_hover(x, y)
 
     def _clear_hover(self):
         self.is_hover_active = False
         self.active_file_path = ""
         self.active_rect = None
+        self._last_resolved_pos = QPoint(-1, -1)
         self.hover_cleared.emit()
 
     def _resolve_and_trigger_hover(self, x: int, y: int):
@@ -289,19 +283,20 @@ class ExplorerHoverMonitor(QObject):
             else:
                 self._clear_hover()
 
-    def _get_active_explorer_context(self, x: int, y: int, expected_folder_name: str = "") -> tuple[str, str, list[str]]:
+    def _get_active_explorer_context(self, x: int, y: int, expected_folder_name: str = "") -> tuple[str, list[str], list[str], list[str]]:
         """
         Queries the exact Shell window/tab under the mouse cursor.
-        Matches the active tab by HWND and folder name for Windows 11 tabbed Explorer.
-        Returns (active_folder_path, focused_item_path, selected_item_paths).
+        Gathers folder paths and items from all tabs belonging to the Explorer window.
+        Returns (active_folder, focused_paths, selected_paths, tab_folders).
         """
         active_folder = ""
-        focused_path = ""
+        focused_paths = []
         selected_paths = []
+        tab_folders = []
         try:
             hwnd = win32gui.WindowFromPoint((x, y))
             if not hwnd:
-                return "", "", []
+                return "", [], [], []
             
             root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT)
             
@@ -317,84 +312,91 @@ class ExplorerHoverMonitor(QObject):
                 except Exception:
                     continue
 
-            # If multiple tabs match the same root window, find the one matching expected_folder_name
+            clean_expected = expected_folder_name.strip().lower() if expected_folder_name else ""
             target_w = None
-            if matching_windows:
-                if len(matching_windows) == 1 or not expected_folder_name:
-                    target_w = matching_windows[0]
-                else:
-                    clean_expected = expected_folder_name.strip().lower()
-                    for w in matching_windows:
-                        loc_name = str(getattr(w, "LocationName", "")).strip().lower()
-                        loc_url = parse_shell_url(str(getattr(w, "LocationURL", ""))).lower()
-                        if loc_name == clean_expected or loc_url.endswith(clean_expected) or clean_expected in loc_url:
-                            target_w = w
-                            break
-                    if not target_w:
-                        target_w = matching_windows[0]
+
+            for w in matching_windows:
+                try:
+                    url = str(getattr(w, "LocationURL", ""))
+                    doc_path = ""
+                    if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
+                        doc_path = str(w.Document.Folder.Self.Path)
+                    
+                    p_folder = parse_shell_url(url) or parse_shell_url(doc_path)
+                    if p_folder and (p_folder.startswith("ftp://") or p_folder.startswith("ftps://") or os.path.isdir(p_folder)):
+                        if p_folder not in tab_folders:
+                            tab_folders.append(p_folder)
+                    
+                    loc_name = str(getattr(w, "LocationName", "")).strip().lower()
+                    loc_url = p_folder.lower()
+                    if clean_expected and (loc_name == clean_expected or loc_url.endswith(clean_expected) or clean_expected in loc_url):
+                        target_w = w
+
+                    if hasattr(w, "Document"):
+                        doc = w.Document
+                        try:
+                            focused = getattr(doc, "FocusedItem", None)
+                            if focused and hasattr(focused, "Path"):
+                                f_p = str(focused.Path)
+                                if f_p and f_p not in focused_paths:
+                                    focused_paths.append(f_p)
+                        except Exception:
+                            pass
+                        try:
+                            sel = doc.SelectedItems()
+                            if sel:
+                                for i in range(min(sel.Count, 10)):
+                                    s_item = sel.Item(i)
+                                    if hasattr(s_item, "Path"):
+                                        s_p = str(s_item.Path)
+                                        if s_p and s_p not in selected_paths:
+                                            selected_paths.append(s_p)
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
 
             if target_w:
                 url = str(getattr(target_w, "LocationURL", ""))
                 doc_path = ""
                 if hasattr(target_w, "Document") and hasattr(target_w.Document, "Folder"):
                     doc_path = str(target_w.Document.Folder.Self.Path)
-                
                 active_folder = parse_shell_url(url) or parse_shell_url(doc_path)
-
-                # Check Focused / Selected Items
-                if hasattr(target_w, "Document"):
-                    doc = target_w.Document
-                    try:
-                        focused = getattr(doc, "FocusedItem", None)
-                        if focused and hasattr(focused, "Path"):
-                            focused_path = str(focused.Path)
-                    except Exception:
-                        pass
-                    
-                    try:
-                        sel = doc.SelectedItems()
-                        if sel:
-                            for i in range(min(sel.Count, 10)):
-                                s_item = sel.Item(i)
-                                if hasattr(s_item, "Path"):
-                                    selected_paths.append(str(s_item.Path))
-                    except Exception:
-                        pass
+            elif tab_folders:
+                active_folder = tab_folders[0]
 
         except Exception:
             pass
-        return active_folder, focused_path, selected_paths
+        return active_folder, focused_paths, selected_paths, tab_folders
 
-    def _get_candidate_folders(self, priority_folder: str = "") -> list:
-        """Retrieves all active folder paths and FTP locations from Explorer windows and Desktop."""
+    def _get_candidate_folders(self, priority_folder: str = "", tab_folders: list = None) -> list:
+        """Retrieves all active folder paths and FTP locations from Explorer windows, all open tabs, and Desktop."""
         folders = []
         if priority_folder and (priority_folder.startswith("ftp://") or priority_folder.startswith("ftps://") or os.path.isdir(priority_folder)):
             folders.append(priority_folder)
 
-        # Only expand other folders if priority_folder is not available
-        if not folders:
-            try:
-                pythoncom.CoInitialize()
-                shell = win32com.client.Dispatch("Shell.Application")
-                for w in shell.Windows():
-                    try:
-                        url = str(getattr(w, "LocationURL", ""))
-                        doc_path = ""
-                        if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
-                            doc_path = str(w.Document.Folder.Self.Path)
-                        
-                        parsed = parse_shell_url(url)
-                        if parsed and (parsed.startswith("ftp://") or parsed.startswith("ftps://") or os.path.isdir(parsed)) and parsed not in folders:
-                            folders.append(parsed)
+        if tab_folders:
+            for tf in tab_folders:
+                if tf not in folders:
+                    folders.append(tf)
 
-                        if doc_path:
-                            parsed_doc = parse_shell_url(doc_path)
-                            if (parsed_doc.startswith("ftp://") or parsed_doc.startswith("ftps://") or os.path.isdir(parsed_doc)) and parsed_doc not in folders:
-                                folders.append(parsed_doc)
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+        try:
+            pythoncom.CoInitialize()
+            shell = win32com.client.Dispatch("Shell.Application")
+            for w in shell.Windows():
+                try:
+                    url = str(getattr(w, "LocationURL", ""))
+                    doc_path = ""
+                    if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
+                        doc_path = str(w.Document.Folder.Self.Path)
+                    
+                    parsed = parse_shell_url(url) or parse_shell_url(doc_path)
+                    if parsed and (parsed.startswith("ftp://") or parsed.startswith("ftps://") or os.path.isdir(parsed)) and parsed not in folders:
+                        folders.append(parsed)
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
         for dp in self.desktop_paths:
             if dp not in folders and os.path.isdir(dp):
@@ -455,8 +457,8 @@ class ExplorerHoverMonitor(QObject):
                 p = p.GetParentControl()
                 p_depth += 1
 
-            # 1. Query active Explorer COM context under cursor for this specific tab
-            priority_folder, focused_path, selected_paths = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)
+            # 1. Query active Explorer COM context under cursor for this specific window and all its tabs
+            priority_folder, focused_paths, selected_paths, tab_folders = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)
 
             # Extract Name & attributes strictly from the item row and its children
             names_to_try = []
@@ -509,12 +511,10 @@ class ExplorerHoverMonitor(QObject):
             if not names_to_try:
                 return None, None
 
-            # 3. Match against COM focused/selected items ONLY if they belong to priority_folder
-            all_com_cands = ([focused_path] if focused_path else []) + selected_paths
+            # 3. Match against COM focused/selected items from all open tabs
+            all_com_cands = focused_paths + selected_paths
             for com_path in all_com_cands:
                 if com_path and os.path.isfile(com_path):
-                    if priority_folder and not os.path.dirname(com_path).lower().startswith(priority_folder.lower()):
-                        continue
                     com_ext = Path(com_path).suffix.lower()
                     if com_ext in self.supported_exts_set:
                         com_stem = Path(com_path).stem.lower()
@@ -524,8 +524,8 @@ class ExplorerHoverMonitor(QObject):
                             if clean_n in (com_stem, com_name) or normalize_str(clean_n) in (normalize_str(com_stem), normalize_str(com_name)):
                                 return com_path, bounding_box
 
-            # 4. Resolve candidate folders
-            candidate_folders = self._get_candidate_folders(priority_folder)
+            # 4. Resolve candidate folders across all active tabs, windows, and desktop
+            candidate_folders = self._get_candidate_folders(priority_folder, tab_folders)
 
             # Determine target extensions from Type hints
             target_exts = []

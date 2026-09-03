@@ -1,10 +1,26 @@
-# 🚀 RawView v2.0.3 Release Notes
+# 🚀 RawView v2.0.5 Release Notes
 
-**RawView v2.0.3** introduces a massive performance overhaul for **Live Video Playback**, eliminating UI thread stalls, throttling high-frequency layout repaints, and enabling hardware-accelerated direct DirectX/Direct3D video rendering for buttery smooth 60 FPS video previews across all formats.
+**RawView v2.0.5** resolves a critical bug in **Windows 11 Multi-Tab Explorer**, ensuring that files across *all open tabs* are discovered and previewed instantly without tab cross-contamination or missed previews.
 
 ---
 
-## 🌟 What's New in v2.0.3
+## 🌟 What's New in v2.0.5
+
+### 📂 1. Comprehensive Windows 11 Multi-Tab Support
+- **Full Tab Discovery**: Fixed an issue where open tabs sharing the same top-level Explorer window handle would cause non-primary tabs to fail resolution.
+- **Unified Tab Candidate Search**: All folder paths belonging to open tabs in the active window are dynamically discovered and queried, guaranteeing instant previews regardless of which tab is active.
+
+---
+
+# 🚀 RawView v2.0.4 Release Notes
+
+### ⚡ 1. Resilient Hover Dwell & Resolution Engine
+- **Fixed Hover State Lock**: Resolved an issue where hover state checks could prevent subsequent files from triggering preview popups.
+- **Position-Based Settle Detection**: Previews now resolve exactly once per settled cursor position, ensuring instant response across List, Details, Grid, Icons, and Desktop views while maintaining zero UI thread usage during dwell.
+
+---
+
+# 🚀 RawView v2.0.3 Release Notes
 
 ### 🎬 1. Ultra-Smooth 60 FPS Live Video Previews
 - **Zero Event-Loop Starvation**: Fixed an issue where continuous 35ms UIAutomation and Shell COM queries during mouse dwell starved Qt's event loop, causing dropped frames and stuttering playback.
@@ -60,6 +76,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v2.0.3_Setup.exe` (~121.95 MB)
+- **Installer**: `dist_installer/RawView_v2.0.5_Setup.exe` (~121.95 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC
