@@ -1,4 +1,4 @@
-# RawView (v3.1.2)
+# RawView (v3.1.3)
 
 **RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, Microsoft Office files, and media projects in Windows Explorer, Desktop, and File Dialogs.
 
@@ -12,8 +12,8 @@
   - **Excel**: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.xltx`, `.csv` (sheet names + financial tables)
   - **PowerPoint**: `.pptx`, `.ppt`, `.pptm`, `.ppsx`, `.potx` (slide count + presentation overview)
 - **🎬 Adobe Video & Motion Graphics Projects**:
-  - **After Effects**: `.aep`, `.aet`, `.aepx` (project structure + shell thumbnails)
-  - **Premiere Pro**: `.prproj`, `.prset` (sequence names + schema version)
+  - **After Effects**: `.aep`, `.aet`, `.aepx` (active compositions, layer names, footages, and assets)
+  - **Premiere Pro**: `.prproj`, `.prset` (active sequence names + schema version)
 - **🎨 Comprehensive Graphics & Design Support**:
   - **PSD & PSB**: Adobe Photoshop files (instant composite & layer extraction)
   - **AI**: Adobe Illustrator files (PDF vector rasterization & full workspace previews)
@@ -47,10 +47,10 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v3.1.2_Setup.exe` installer:
+To compile the standalone `RawView_v3.1.3_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v3.1.2_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v3.1.3_Setup.exe`.

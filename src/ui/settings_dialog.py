@@ -15,7 +15,7 @@ from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import get_license_status, activate_license, get_machine_id
 
 class SettingsDialog(QDialog):
-    """Modern dark-themed preferences dialog for RawView v3.1.2."""
+    """Modern dark-themed preferences dialog for RawView v3.1.3."""
     config_changed = pyqtSignal(dict)
 
     def __init__(self, config: dict, parent=None):

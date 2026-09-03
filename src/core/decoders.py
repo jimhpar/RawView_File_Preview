@@ -12,7 +12,7 @@ from PIL import Image, ImageOps
 import pypdfium2 as pdfium
 import pymupdf as fitz
 import rawpy
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QLinearGradient, QPen
 from PyQt6.QtCore import QByteArray, QSize, Qt
 from PyQt6.QtSvg import QSvgRenderer
 import comtypes
@@ -708,82 +708,140 @@ class OfficeDocDecoder:
     
     @staticmethod
     def _create_fallback_card(ext: str, file_path: str, size: int, meta: dict = None) -> QImage:
-        w, h = 760, 480
-        img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
-        img.fill(QColor("#0F172A"))
+        w, h = 640, 420
+        img = QImage(w, h, QImage.Format.Format_RGB32)
+        img.fill(QColor("#090D16"))
         
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         
         e = ext.lower()
         if e in (".docx", ".doc", ".docm", ".dotx", ".dot", ".rtf"):
-            brand_col = QColor("#2B579A")
+            grad_c1, grad_c2 = "#1E3A8A", "#172554"
+            badge_bg, badge_fg = "#1E40AF", "#60A5FA"
             app_title = "Microsoft Word Document"
             icon_char = "W"
         elif e in (".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx", ".csv"):
-            brand_col = QColor("#217346")
+            grad_c1, grad_c2 = "#064E3B", "#022C22"
+            badge_bg, badge_fg = "#065F46", "#34D399"
             app_title = "Microsoft Excel Spreadsheet"
             icon_char = "X"
         elif e in (".pptx", ".ppt", ".pptm", ".ppsx", ".potx"):
-            brand_col = QColor("#D24726")
+            grad_c1, grad_c2 = "#7C2D12", "#431407"
+            badge_bg, badge_fg = "#9A3412", "#FB923C"
             app_title = "Microsoft PowerPoint Presentation"
             icon_char = "P"
         else:
-            brand_col = QColor("#0284C7")
+            grad_c1, grad_c2 = "#0F172A", "#0B0F19"
+            badge_bg, badge_fg = "#1E293B", "#38BDF8"
             app_title = "Office Document"
             icon_char = "D"
 
-        # Background gradient & card styling
-        painter.fillRect(0, 0, w, h, QColor("#0B0F19"))
-        painter.fillRect(10, 10, w - 20, 72, brand_col)
+        # 1. Header Banner Gradient
+        grad = QLinearGradient(0, 0, w, 84)
+        grad.setColorAt(0.0, QColor(grad_c1))
+        grad.setColorAt(1.0, QColor(grad_c2))
+        painter.fillRect(0, 0, w, 84, grad)
+        painter.fillRect(0, 83, w, 1, QColor(badge_fg))
         
-        # Icon block
-        painter.fillRect(26, 22, 48, 48, QColor(0, 0, 0, 70))
+        # Emblem Icon Box
+        painter.setBrush(QColor(badge_bg))
+        painter.setPen(QPen(QColor(badge_fg), 1.5))
+        painter.drawRoundedRect(18, 16, 52, 52, 10, 10)
+        
         painter.setPen(QColor("#FFFFFF"))
         painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
-        painter.drawText(26, 22, 48, 48, Qt.AlignmentFlag.AlignCenter, icon_char)
+        painter.drawText(18, 16, 52, 52, Qt.AlignmentFlag.AlignCenter, icon_char)
         
-        # Header text
-        painter.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        painter.drawText(86, 44, app_title)
-        painter.setFont(QFont("Segoe UI", 11))
+        # Header Text
+        painter.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        painter.drawText(82, 38, app_title)
+        
         painter.setPen(QColor("#E2E8F0"))
+        painter.setFont(QFont("Segoe UI", 11))
         fname = Path(file_path).name
-        painter.drawText(86, 66, fname)
+        painter.drawText(82, 60, fname)
         
-        # Metadata Card Content
-        y = 125
+        # 2. File Metadata & Stats
         meta = meta or {}
-        rows = []
+        size_bytes = size
+        if size_bytes < 1024:
+            size_str = f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+            
+        try:
+            mtime = os.path.getmtime(file_path)
+            from datetime import datetime
+            date_str = datetime.fromtimestamp(mtime).strftime("%d %b %Y, %I:%M %p")
+        except Exception:
+            date_str = "Unknown"
+
+        # Tile A: Primary Document Overview Tile
+        painter.setBrush(QColor("#111625"))
+        painter.setPen(QPen(QColor("#1E293B"), 1))
+        painter.drawRoundedRect(18, 100, w - 36, 140, 8, 8)
+        
+        painter.setPen(QColor(badge_fg))
+        painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        painter.drawText(32, 126, "📄 Document Overview & Metadata")
+        
+        overview_rows = []
         if meta.get("title"):
-            rows.append(("Document Title:", str(meta["title"])))
+            overview_rows.append(("Title:", str(meta["title"])))
         if meta.get("author"):
-            rows.append(("Author:", str(meta["author"])))
-        if meta.get("pages"):
-            rows.append(("Pages:", str(meta["pages"])))
-        if meta.get("slides"):
-            rows.append(("Slides:", str(meta["slides"])))
-        if meta.get("words"):
-            rows.append(("Word Count:", f"{int(meta['words']):,}"))
+            overview_rows.append(("Author:", str(meta["author"])))
         if meta.get("sheets"):
-            rows.append(("Sheet Names:", str(meta["sheets"])))
-        
-        from src.core.decoders import PreviewResult
-        dummy = PreviewResult(QImage(), 0, 0, "", "", size)
-        rows.append(("File Size:", dummy.formatted_size))
-        rows.append(("Format:", e.upper().lstrip(".")))
-        
-        for label, val in rows:
-            if y > h - 30:
-                break
-            painter.setPen(QColor("#64748B"))
-            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
-            painter.drawText(36, y, 140, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+            overview_rows.append(("Sheets:", str(meta["sheets"])))
+        if meta.get("slides"):
+            overview_rows.append(("Total Slides:", f"{meta['slides']} slides"))
+        if meta.get("pages"):
+            overview_rows.append(("Total Pages:", f"{meta['pages']} pages"))
+        if meta.get("words"):
+            overview_rows.append(("Word Count:", f"{int(meta['words']):,} words"))
+            
+        if not overview_rows:
+            overview_rows.append(("Status:", "Ready for viewing in Microsoft Office"))
+            
+        y_ov = 154
+        for label, val in overview_rows[:3]:
+            painter.setPen(QColor("#94A3B8"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
+            painter.drawText(32, y_ov, 110, 22, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
             
             painter.setPen(QColor("#F8FAFC"))
-            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-            painter.drawText(180, y, w - 210, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:60])
-            y += 32
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            painter.drawText(150, y_ov, w - 180, 22, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:65])
+            y_ov += 26
+            
+        # Tile B: File Details Tile
+        painter.setBrush(QColor("#111625"))
+        painter.setPen(QPen(QColor("#1E293B"), 1))
+        painter.drawRoundedRect(18, 252, w - 36, 148, 8, 8)
+        
+        painter.setPen(QColor(badge_fg))
+        painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        painter.drawText(32, 278, "📊 File Specifications")
+        
+        file_specs = [
+            ("📁 File Size:", size_str),
+            ("🕒 Last Modified:", date_str),
+            ("🏷️ Format Type:", f"{e.upper().lstrip('.')} Document"),
+        ]
+        
+        y_sp = 306
+        for label, val in file_specs:
+            painter.setPen(QColor("#94A3B8"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
+            painter.drawText(32, y_sp, 120, 22, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+            
+            painter.setPen(QColor("#F1F5F9"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if label != "🕒 Last Modified:" else QFont.Weight.Normal))
+            painter.drawText(160, y_sp, w - 190, 22, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:65])
+            y_sp += 26
             
         painter.end()
         return img
@@ -893,75 +951,164 @@ class AdobeProjectDecoder:
     """Ultra-fast decoder for Adobe After Effects (.aep) and Premiere Pro (.prproj) projects."""
     
     @staticmethod
+    def _parse_aep_details(file_path: str) -> dict:
+        info = {'comps': [], 'assets': []}
+        try:
+            with open(file_path, 'rb') as f:
+                data = f.read()
+                
+            items = []
+            for match in re.finditer(rb'Utf8', data):
+                idx = match.end()
+                if idx + 4 <= len(data):
+                    length = int.from_bytes(data[idx:idx+4], 'big')
+                    if 1 < length < 100 and idx + 4 + length <= len(data):
+                        val = data[idx+4:idx+4+length].decode('utf-8', errors='ignore').strip('\x00')
+                        if val and len(val) > 1 and not val.startswith('{') and not val.startswith('$') and not val.startswith('http'):
+                            if not re.match(r'^[0-9a-fA-F-]{30,}$', val) and not re.match(r'^[0-9a-fA-F]{8,}', val):
+                                if val not in ('javascript-1.0', '{}', 'None', '-_0_/-', 'Solids', 'Rec. 709', 'Active', 'Auto', 'High Dynamic Range', 'Lumetri Color', 'Horizontal and Vertical|Horizontal|Vertical', 'Gaussian Blur (Legacy)'):
+                                    if val not in items:
+                                        items.append(val)
+            
+            comps = [x for x in items if not x.endswith(('.png', '.jpg', '.jpeg', '.mp4', '.mov', '.wav', '.mp3', '.ai', '.psd'))]
+            assets = [x for x in items if x.endswith(('.png', '.jpg', '.jpeg', '.mp4', '.mov', '.wav', '.mp3', '.ai', '.psd')) or x == 'Solids']
+            info['comps'] = comps[:4]
+            info['assets'] = assets[:3]
+        except Exception:
+            pass
+        return info
+
+    @staticmethod
     def _create_fallback_card(ext: str, file_path: str, size: int, meta: dict = None) -> QImage:
-        w, h = 760, 480
-        img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
-        img.fill(QColor("#0F172A"))
+        w, h = 640, 420
+        img = QImage(w, h, QImage.Format.Format_RGB32)
+        img.fill(QColor("#090D16"))
         
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         
         e = ext.lower()
         if e in (".aep", ".aet", ".aepx"):
-            brand_col = QColor("#1E1B4B")
-            badge_col = QColor("#9999FF")
+            grad_c1, grad_c2 = "#31104D", "#1E112A"
+            badge_bg, badge_fg = "#130924", "#C084FC"
             app_title = "Adobe After Effects Project"
             icon_char = "Ae"
+            item_label = "🎬 Active Compositions & Layers"
         elif e in (".prproj", ".prset"):
-            brand_col = QColor("#3B0764")
-            badge_col = QColor("#EA77FF")
+            grad_c1, grad_c2 = "#3B0764", "#240046"
+            badge_bg, badge_fg = "#20033B", "#F472B6"
             app_title = "Adobe Premiere Pro Project"
             icon_char = "Pr"
+            item_label = "🎬 Active Sequences & Timelines"
         else:
-            brand_col = QColor("#1E293B")
-            badge_col = QColor("#38BDF8")
-            app_title = "Adobe Project"
+            grad_c1, grad_c2 = "#1E293B", "#0F172A"
+            badge_bg, badge_fg = "#0F172A", "#38BDF8"
+            app_title = "Adobe Video Project"
             icon_char = "Ad"
+            item_label = "🎬 Project Sequences"
             
-        # Background gradient & card styling
-        painter.fillRect(0, 0, w, h, QColor("#0B0F19"))
-        painter.fillRect(10, 10, w - 20, 72, brand_col)
+        # 1. Header Banner Gradient
+        grad = QLinearGradient(0, 0, w, 84)
+        grad.setColorAt(0.0, QColor(grad_c1))
+        grad.setColorAt(1.0, QColor(grad_c2))
+        painter.fillRect(0, 0, w, 84, grad)
+        painter.fillRect(0, 83, w, 1, QColor(badge_fg))
         
-        # Header Badge
-        painter.fillRect(26, 22, 48, 48, QColor(0, 0, 0, 100))
-        painter.setPen(badge_col)
+        # Emblem Icon Box
+        painter.setBrush(QColor(badge_bg))
+        painter.setPen(QPen(QColor(badge_fg), 1.5))
+        painter.drawRoundedRect(18, 16, 52, 52, 10, 10)
+        
+        painter.setPen(QColor(badge_fg))
         painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
-        painter.drawText(26, 22, 48, 48, Qt.AlignmentFlag.AlignCenter, icon_char)
+        painter.drawText(18, 16, 52, 52, Qt.AlignmentFlag.AlignCenter, icon_char)
         
         # Header Title
         painter.setPen(QColor("#FFFFFF"))
-        painter.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        painter.drawText(86, 44, app_title)
+        painter.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        painter.drawText(82, 38, app_title)
+        
+        painter.setPen(QColor("#E2E8F0"))
         painter.setFont(QFont("Segoe UI", 11))
-        painter.setPen(QColor("#94A3B8"))
         fname = Path(file_path).name
-        painter.drawText(86, 66, fname)
+        painter.drawText(82, 60, fname)
         
-        # Metadata Rows
+        # 2. Extract Project Items
         meta = meta or {}
-        rows = []
-        if meta.get("sequence"):
-            rows.append(("Main Sequence:", str(meta["sequence"])))
-        if meta.get("version"):
-            rows.append(("Project Version:", str(meta["version"])))
+        comps = meta.get("comps", [])
+        if not comps and meta.get("sequence"):
+            comps = [meta["sequence"]]
+        if not comps:
+            comps = [fname.rsplit('.', 1)[0]]
             
-        from src.core.decoders import PreviewResult
-        dummy = PreviewResult(QImage(), 0, 0, "", "", size)
-        rows.append(("File Size:", dummy.formatted_size))
-        rows.append(("Format:", e.upper().lstrip(".")))
+        # Section A: Compositions / Sequences Tile
+        painter.setBrush(QColor("#111625"))
+        painter.setPen(QPen(QColor("#1E293B"), 1))
+        painter.drawRoundedRect(18, 100, w - 36, 146, 8, 8)
         
-        y = 125
-        for label, val in rows:
-            if y > h - 30:
-                break
-            painter.setPen(QColor("#64748B"))
-            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
-            painter.drawText(36, y, 140, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+        painter.setPen(QColor(badge_fg))
+        painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        painter.drawText(32, 126, item_label)
+        
+        y_comp = 152
+        for idx, c in enumerate(comps[:3]):
+            painter.setBrush(QColor("#1E1B4B") if icon_char == "Ae" else QColor("#2A0845"))
+            painter.setPen(QPen(QColor(badge_fg).darker(150), 1))
+            painter.drawRoundedRect(32, y_comp - 15, w - 64, 26, 4, 4)
+            
+            painter.setPen(QColor(badge_fg))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            painter.drawText(42, y_comp + 3, f"#{idx+1}")
             
             painter.setPen(QColor("#F8FAFC"))
-            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-            painter.drawText(180, y, w - 210, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:60])
-            y += 32
+            painter.setFont(QFont("Segoe UI", 10))
+            painter.drawText(72, y_comp + 3, str(c)[:60])
+            y_comp += 30
+            
+        # Section B: Project Stats Tile
+        painter.setBrush(QColor("#111625"))
+        painter.setPen(QPen(QColor("#1E293B"), 1))
+        painter.drawRoundedRect(18, 258, w - 36, 142, 8, 8)
+        
+        painter.setPen(QColor(badge_fg))
+        painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        painter.drawText(32, 284, "📊 Project Specifications & Assets")
+        
+        size_bytes = size
+        if size_bytes < 1024:
+            size_str = f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+            
+        try:
+            mtime = os.path.getmtime(file_path)
+            from datetime import datetime
+            date_str = datetime.fromtimestamp(mtime).strftime("%d %b %Y, %I:%M %p")
+        except Exception:
+            date_str = "Unknown"
+            
+        assets = meta.get("assets", [])
+        asset_str = ", ".join(assets) if assets else "Project Compositions"
+        
+        stats = [
+            ("📁 File Size:", size_str),
+            ("🕒 Modified:", date_str),
+            ("📦 Footages / Assets:", asset_str),
+        ]
+        
+        y_stat = 312
+        for label, val in stats:
+            painter.setPen(QColor("#94A3B8"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
+            painter.drawText(32, y_stat, 140, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+            
+            painter.setPen(QColor("#F1F5F9"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if label != "🕒 Modified:" else QFont.Weight.Normal))
+            painter.drawText(180, y_stat, w - 210, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:65])
+            y_stat += 26
             
         painter.end()
         return img
@@ -973,7 +1120,9 @@ class AdobeProjectDecoder:
         fmt_name = ext.lstrip(".").upper()
         
         meta = {}
-        if ext in (".prproj", ".prset"):
+        if ext in (".aep", ".aet", ".aepx"):
+            meta = cls._parse_aep_details(file_path)
+        elif ext in (".prproj", ".prset"):
             try:
                 import gzip
                 with gzip.open(file_path, 'rb') as gz:

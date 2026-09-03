@@ -1,10 +1,21 @@
-# 🚀 RawView v3.1.2 Release Notes
+# 🚀 RawView v3.1.3 Release Notes
 
-**RawView v3.1.2** delivers a refined preview experience for **Office Documents** and **Adobe Video Projects**, strictly eliminating generic/inverted application icons in favor of true embedded slide media and rich Creative Cloud info cards with deep document metadata.
+**RawView v3.1.3** introduces intelligent deep project parsing for **Adobe After Effects (`.aep`, `.aet`)**, extracting real composition names, active layers, and linked footage assets directly onto a redesigned, high-contrast Creative Cloud project card with crisp typography.
 
 ---
 
-## 🌟 What's New in v3.1.2
+## 🌟 What's New in v3.1.3
+
+### 🎬 1. Deep After Effects Composition & Layer Extraction
+* **RIFX Project Tree Parsing**: RawView now inspects After Effects binary chunks to extract actual composition names (e.g. `50 TK`, `Outro`, `Intro Animation`) and linked footage assets.
+* **Redesigned High-Definition Fallback Cards**: Upgraded to 640x420 RGB32 cards with dual-tile layout:
+  * **Top Tile**: Displays numbered badges for active compositions and sequence timelines.
+  * **Bottom Tile**: Displays file size, date modified, author, and linked assets with bright legible typography.
+* **Eliminated Truncation & Low-Contrast Text**: Fixed clipping issues and replaced dull gray labels with vibrant, high-contrast Segoe UI typography.
+
+---
+
+# 🚀 RawView v3.1.2 Release Notes
 
 ### 🎯 1. Eliminated Generic Application Icon Fallbacks
 * **Strict Visual Thumbnail Validation (`SIIGBF_THUMBNAILONLY`)**: Windows Shell image provider is now queried strictly for real visual page/slide thumbnails. Generic file association icons (such as upside-down Ae icons or blank paper icons) are blocked from display.
@@ -102,6 +113,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v3.1.2_Setup.exe` (~122 MB)
+- **Installer**: `dist_installer/RawView_v3.1.3_Setup.exe` (~122 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC
