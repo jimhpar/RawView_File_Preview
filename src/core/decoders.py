@@ -678,8 +678,10 @@ class VideoDecoder:
         ext = Path(file_path).suffix.lower()
         fmt_name = ext.replace(".", "").upper()
 
-        # Native Windows Shell Video Thumbnail
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=False)
+        # Native Windows Shell Video Thumbnail (Fast thumbnail cache lookup first)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
+        if not shell_qim or shell_qim.isNull():
+            shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=False)
         
         w = shell_qim.width() if shell_qim else 1920
         h = shell_qim.height() if shell_qim else 1080

@@ -240,10 +240,18 @@ class ExplorerHoverMonitor(QObject):
                     self._clear_hover()
             return
 
-        # Cursor is settled/dwelling
+        # Check if cursor drifted outside active bounding box even with micro-movements
+        if self.is_hover_active and self.active_rect:
+            left, top, right, bottom = self.active_rect
+            if x < left - 16 or x > right + 16 or y < top - 4 or y > bottom + 4:
+                self._clear_hover()
+                return
+
+        # Cursor is settled/dwelling: only resolve if not currently active
         dwell_ms = now - self.settle_start_time
         if dwell_ms >= self.hover_delay_ms:
-            self._resolve_and_trigger_hover(x, y)
+            if not self.is_hover_active:
+                self._resolve_and_trigger_hover(x, y)
 
     def _clear_hover(self):
         self.is_hover_active = False

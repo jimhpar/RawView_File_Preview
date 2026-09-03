@@ -83,6 +83,7 @@ class DecodeRunnable(QRunnable):
                 pil_img, meta = cached_disk
                 from src.core.decoders import pil_to_qimage
                 qim = pil_to_qimage(pil_img)
+                is_vid = meta.get("is_video", False)
                 res = PreviewResult(
                     qimage=qim,
                     width=meta.get("width", 0),
@@ -90,7 +91,9 @@ class DecodeRunnable(QRunnable):
                     mode=meta.get("mode", ""),
                     format_name=meta.get("format", ""),
                     file_size=size,
-                    extra_info=meta.get("extra", "")
+                    extra_info=meta.get("extra", ""),
+                    is_video=is_vid,
+                    video_path=self.file_path if is_vid else ""
                 )
                 self.memory_cache.put(self.file_path, mtime, size, res)
                 self.signals.finished.emit(self.file_path, res, self.cursor_x, self.cursor_y)
@@ -122,7 +125,8 @@ class DecodeRunnable(QRunnable):
                         "height": res.height,
                         "mode": res.mode,
                         "format": res.format_name,
-                        "extra": res.extra_info
+                        "extra": res.extra_info,
+                        "is_video": res.is_video
                     }
                     self.disk_cache.put(self.file_path, mtime, size, pil_img, meta)
             except Exception:

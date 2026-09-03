@@ -262,14 +262,16 @@ class VideoPlayerWidget(QWidget):
         self.max_display_w = 640
         self.max_display_h = 480
         self.aspect_ratio = 16.0 / 9.0
+        self._last_pct = -1
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Video Output Viewport
+        # Video Output Viewport (hardware-accelerated opaque paint)
         self.video_widget = QVideoWidget(self)
-        self.video_widget.setStyleSheet("background-color: #000000; border-radius: 8px;")
+        self.video_widget.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.video_widget.setStyleSheet("background-color: #000000;")
         layout.addWidget(self.video_widget, stretch=1)
 
         # Sleek Micro Progress Bar
@@ -339,7 +341,9 @@ class VideoPlayerWidget(QWidget):
         dur = self.player.duration()
         if dur > 0:
             pct = int((pos_ms / dur) * 100)
-            self.progress_bar.setValue(pct)
+            if pct != self._last_pct:
+                self._last_pct = pct
+                self.progress_bar.setValue(pct)
         self.playback_time_changed.emit(pos_ms, dur)
 
     def _on_duration_changed(self, dur_ms: int):
@@ -468,7 +472,7 @@ class TrialExpiredCard(QWidget):
 
 class FloatingPreviewHUD(QWidget):
     """
-    Hardware-accelerated, glassmorphic floating preview window for RawView v2.0.1.
+    Hardware-accelerated, glassmorphic floating preview window for RawView v2.0.3.
     Seamlessly renders full-resolution images, documents, live video playback,
     and handles 7-day unlimited trial + Lifetime Pro activation states.
     """
@@ -483,6 +487,8 @@ class FloatingPreviewHUD(QWidget):
         self.is_pinned = False
         self.current_file_path = ""
         self.current_result = None
+        self._last_video_p_sec = -1
+        self._last_video_d_sec = -1
 
         self._init_window_flags()
         self._init_ui()
@@ -679,12 +685,17 @@ class FloatingPreviewHUD(QWidget):
         if self.current_result and self.current_result.is_video:
             p_sec = int(pos_ms // 1000)
             d_sec = int(dur_ms // 1000) if dur_ms > 0 else 0
-            time_str = f"{p_sec // 60}:{p_sec % 60:02d} / {d_sec // 60}:{d_sec % 60:02d}"
-            self.mode_label.setText(time_str)
+            if p_sec != self._last_video_p_sec or d_sec != self._last_video_d_sec:
+                self._last_video_p_sec = p_sec
+                self._last_video_d_sec = d_sec
+                time_str = f"{p_sec // 60}:{p_sec % 60:02d} / {d_sec // 60}:{d_sec % 60:02d}"
+                self.mode_label.setText(time_str)
 
     def display_preview(self, file_path: str, result: PreviewResult, cursor_x: int, cursor_y: int):
         self.current_file_path = file_path
         self.current_result = result
+        self._last_video_p_sec = -1
+        self._last_video_d_sec = -1
 
         # Check License Status
         lic_info = get_license_status()

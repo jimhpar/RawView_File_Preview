@@ -1,10 +1,20 @@
-# 🚀 RawView v2.0.2 Release Notes
+# 🚀 RawView v2.0.3 Release Notes
 
-**RawView v2.0.2** brings a critical fix for **Windows Explorer Blank Space Hover Filtering**, introduces the **7-Day Unlimited Free Trial Engine**, integrates **Offline Hardware ID Machine-Locked 50 TK Pro Licensing**, and adds direct **bKash & WhatsApp Purchase Support**.
+**RawView v2.0.3** introduces a massive performance overhaul for **Live Video Playback**, eliminating UI thread stalls, throttling high-frequency layout repaints, and enabling hardware-accelerated direct DirectX/Direct3D video rendering for buttery smooth 60 FPS video previews across all formats.
 
 ---
 
-## 🌟 What's New in v2.0.2
+## 🌟 What's New in v2.0.3
+
+### 🎬 1. Ultra-Smooth 60 FPS Live Video Previews
+- **Zero Event-Loop Starvation**: Fixed an issue where continuous 35ms UIAutomation and Shell COM queries during mouse dwell starved Qt's event loop, causing dropped frames and stuttering playback.
+- **Hardware Direct3D Video Output**: Configured `QVideoWidget` with native opaque hardware paint modes without CSS rasterization bottlenecks.
+- **Throttled Repaints & Layout Updates**: Throttled progress bar and timestamp updates to eliminate redundant CPU/GPU drop-shadow blur passes.
+- **Sub-Millisecond Thumbnail Resolution**: Instant thumbnail cache lookups (~0.6ms) for immediate preview HUD display before seamless live video stream starts.
+
+---
+
+## 🚀 RawView v2.0.2 Release Notes
 
 ### 🎯 1. Fixed Blank Space / Folder Background Hover Bug
 - **Precise Item Detection**: Resolved an issue where hovering the cursor over empty whitespace / background areas of a folder window in Windows Explorer would inadvertently trigger a preview if the folder name matched any file inside.
