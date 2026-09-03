@@ -80,6 +80,28 @@ def detect_extensions_from_type_text(type_text: str) -> list[str]:
     if "camera raw" in t or "raw image" in t:
         return [".dng", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"]
 
+    # Microsoft Word & RTF
+    if "word" in t or "docx" in t or "docm" in t or "dotx" in t or "doc " in t:
+        return [".docx", ".doc", ".docm", ".dotx", ".dot"]
+    if "rich text" in t or "rtf" in t:
+        return [".rtf"]
+
+    # Microsoft Excel & CSV
+    if "excel" in t or "spreadsheet" in t or "worksheet" in t or "xlsx" in t or "xlsm" in t or "xlsb" in t:
+        return [".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx"]
+    if "comma separated" in t or "csv" in t:
+        return [".csv"]
+
+    # Microsoft PowerPoint
+    if "powerpoint" in t or "presentation" in t or "slide" in t or "pptx" in t or "pptm" in t or "ppsx" in t:
+        return [".pptx", ".ppt", ".pptm", ".ppsx", ".potx"]
+
+    # Adobe After Effects & Premiere Pro
+    if "after effects" in t or "aep" in t or "aet" in t:
+        return [".aep", ".aet", ".aepx"]
+    if "premiere" in t or "prproj" in t or "prset" in t:
+        return [".prproj", ".prset"]
+
     # Video Formats
     if "mp4" in t or "mpeg-4" in t:
         return [".mp4", ".m4v"]

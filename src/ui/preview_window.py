@@ -27,6 +27,32 @@ FORMAT_COLORS = {
     "TIF": ("#10B981", "#064E3B"),
     "SVG": ("#F43F5E", "#4C0519"),
     "SVGZ":("#F43F5E", "#4C0519"),
+    # Microsoft Word & Documents
+    "DOCX": ("#38BDF8", "#0C4A6E"),
+    "DOC":  ("#38BDF8", "#0C4A6E"),
+    "DOCM": ("#38BDF8", "#0C4A6E"),
+    "DOTX": ("#38BDF8", "#0C4A6E"),
+    "DOT":  ("#38BDF8", "#0C4A6E"),
+    "RTF":  ("#60A5FA", "#1E3A8A"),
+    # Microsoft Excel & CSV
+    "XLSX": ("#34D399", "#064E3B"),
+    "XLS":  ("#34D399", "#064E3B"),
+    "XLSM": ("#34D399", "#064E3B"),
+    "XLSB": ("#34D399", "#064E3B"),
+    "XLTX": ("#34D399", "#064E3B"),
+    "CSV":  ("#10B981", "#064E3B"),
+    # Microsoft PowerPoint
+    "PPTX": ("#FB923C", "#7C2D12"),
+    "PPT":  ("#FB923C", "#7C2D12"),
+    "PPTM": ("#FB923C", "#7C2D12"),
+    "PPSX": ("#FB923C", "#7C2D12"),
+    "POTX": ("#FB923C", "#7C2D12"),
+    # Adobe Video & Motion Graphics Projects
+    "AEP":  ("#A5B4FC", "#312E81"),
+    "AET":  ("#A5B4FC", "#312E81"),
+    "AEPX": ("#A5B4FC", "#312E81"),
+    "PRPROJ": ("#F472B6", "#831843"),
+    "PRSET":  ("#F472B6", "#831843"),
     # Video Formats
     "MP4": ("#38BDF8", "#0369A1"),
     "MKV": ("#10B981", "#064E3B"),
@@ -472,7 +498,7 @@ class TrialExpiredCard(QWidget):
 
 class FloatingPreviewHUD(QWidget):
     """
-    Hardware-accelerated, glassmorphic floating preview window for RawView v2.0.5.
+    Hardware-accelerated, glassmorphic floating preview window for RawView v3.1.1.
     Seamlessly renders full-resolution images, documents, live video playback,
     and handles 7-day unlimited trial + Lifetime Pro activation states.
     """

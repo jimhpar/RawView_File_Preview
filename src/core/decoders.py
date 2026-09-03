@@ -703,6 +703,296 @@ class VideoDecoder:
             extra_info="Live Video"
         )
 
+class OfficeDocDecoder:
+    """Ultra-fast decoder for Microsoft Word, Excel, PowerPoint, RTF, and CSV documents."""
+    
+    @staticmethod
+    def _create_fallback_card(ext: str, file_path: str, size: int, meta: dict = None) -> QImage:
+        w, h = 760, 480
+        img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(QColor("#0F172A"))
+        
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        e = ext.lower()
+        if e in (".docx", ".doc", ".docm", ".dotx", ".dot", ".rtf"):
+            brand_col = QColor("#2B579A")
+            app_title = "Microsoft Word Document"
+            icon_char = "W"
+        elif e in (".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx", ".csv"):
+            brand_col = QColor("#217346")
+            app_title = "Microsoft Excel Spreadsheet"
+            icon_char = "X"
+        elif e in (".pptx", ".ppt", ".pptm", ".ppsx", ".potx"):
+            brand_col = QColor("#D24726")
+            app_title = "Microsoft PowerPoint Presentation"
+            icon_char = "P"
+        else:
+            brand_col = QColor("#0284C7")
+            app_title = "Office Document"
+            icon_char = "D"
+
+        # Background gradient & card styling
+        painter.fillRect(0, 0, w, h, QColor("#0B0F19"))
+        painter.fillRect(10, 10, w - 20, 72, brand_col)
+        
+        # Icon block
+        painter.fillRect(26, 22, 48, 48, QColor(0, 0, 0, 70))
+        painter.setPen(QColor("#FFFFFF"))
+        painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        painter.drawText(26, 22, 48, 48, Qt.AlignmentFlag.AlignCenter, icon_char)
+        
+        # Header text
+        painter.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        painter.drawText(86, 44, app_title)
+        painter.setFont(QFont("Segoe UI", 11))
+        painter.setPen(QColor("#E2E8F0"))
+        fname = Path(file_path).name
+        painter.drawText(86, 66, fname)
+        
+        # Metadata Card Content
+        y = 125
+        meta = meta or {}
+        rows = []
+        if meta.get("title"):
+            rows.append(("Document Title:", str(meta["title"])))
+        if meta.get("author"):
+            rows.append(("Author:", str(meta["author"])))
+        if meta.get("pages"):
+            rows.append(("Pages:", str(meta["pages"])))
+        if meta.get("slides"):
+            rows.append(("Slides:", str(meta["slides"])))
+        if meta.get("words"):
+            rows.append(("Word Count:", f"{int(meta['words']):,}"))
+        if meta.get("sheets"):
+            rows.append(("Sheet Names:", str(meta["sheets"])))
+        
+        from src.core.decoders import PreviewResult
+        dummy = PreviewResult(QImage(), 0, 0, "", "", size)
+        rows.append(("File Size:", dummy.formatted_size))
+        rows.append(("Format:", e.upper().lstrip(".")))
+        
+        for label, val in rows:
+            if y > h - 30:
+                break
+            painter.setPen(QColor("#64748B"))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
+            painter.drawText(36, y, 140, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+            
+            painter.setPen(QColor("#F8FAFC"))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+            painter.drawText(180, y, w - 210, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:60])
+            y += 32
+            
+        painter.end()
+        return img
+
+    @classmethod
+    def decode(cls, file_path: str, max_size: int = 1440) -> PreviewResult:
+        size = os.path.getsize(file_path)
+        ext = Path(file_path).suffix.lower()
+        fmt_name = ext.lstrip(".").upper()
+        
+        meta = {}
+        # 1. Try OpenXML ZIP thumbnail extraction for .docx, .xlsx, .pptx
+        if ext in (".docx", ".xlsx", ".pptx", ".docm", ".dotx", ".xlsm", ".xltx", ".pptm", ".ppsx", ".potx"):
+            try:
+                import zipfile
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    for thumb_name in ("docProps/thumbnail.jpeg", "docProps/thumbnail.jpg", "docProps/thumbnail.png"):
+                        if thumb_name in z.namelist():
+                            thumb_bytes = z.read(thumb_name)
+                            qim = QImage.fromData(thumb_bytes)
+                            if not qim.isNull() and qim.width() > 10:
+                                return PreviewResult(
+                                    qimage=qim,
+                                    width=qim.width(),
+                                    height=qim.height(),
+                                    mode="RGB (Office Thumbnail)",
+                                    format_name=fmt_name,
+                                    file_size=size,
+                                    extra_info="OpenXML Document"
+                                )
+                    
+                    if "docProps/app.xml" in z.namelist():
+                        app_xml = z.read("docProps/app.xml").decode("utf-8", errors="ignore")
+                        import xml.etree.ElementTree as ET
+                        root = ET.fromstring(app_xml)
+                        for elem in root.iter():
+                            tag = elem.tag.split("}")[-1]
+                            if tag == "Pages" and elem.text:
+                                meta["pages"] = elem.text
+                            elif tag == "Slides" and elem.text:
+                                meta["slides"] = elem.text
+                            elif tag == "Words" and elem.text:
+                                meta["words"] = elem.text
+                            elif tag == "TitlesOfParts":
+                                sheets = [c.text for c in elem.iter() if c.text and c.text.strip()]
+                                if sheets:
+                                    meta["sheets"] = ", ".join(sheets[:5])
+                                    
+                    if "docProps/core.xml" in z.namelist():
+                        core_xml = z.read("docProps/core.xml").decode("utf-8", errors="ignore")
+                        import xml.etree.ElementTree as ET
+                        root = ET.fromstring(core_xml)
+                        for elem in root.iter():
+                            tag = elem.tag.split("}")[-1]
+                            if tag == "title" and elem.text:
+                                meta["title"] = elem.text
+                            elif tag == "creator" and elem.text:
+                                meta["author"] = elem.text
+            except Exception:
+                pass
+                
+        # 2. Try Windows Shell Image Factory (Native Office Shell Provider)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size)
+        if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
+            return PreviewResult(
+                qimage=shell_qim,
+                width=shell_qim.width(),
+                height=shell_qim.height(),
+                mode="RGB (Shell Preview)",
+                format_name=fmt_name,
+                file_size=size,
+                extra_info="Office Document"
+            )
+            
+        # 3. Fallback to Rich Branded Card
+        card = cls._create_fallback_card(ext, file_path, size, meta)
+        return PreviewResult(
+            qimage=card,
+            width=card.width(),
+            height=card.height(),
+            mode="Document Card",
+            format_name=fmt_name,
+            file_size=size,
+            extra_info="Office Document"
+        )
+
+class AdobeProjectDecoder:
+    """Ultra-fast decoder for Adobe After Effects (.aep) and Premiere Pro (.prproj) projects."""
+    
+    @staticmethod
+    def _create_fallback_card(ext: str, file_path: str, size: int, meta: dict = None) -> QImage:
+        w, h = 760, 480
+        img = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(QColor("#0F172A"))
+        
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        e = ext.lower()
+        if e in (".aep", ".aet", ".aepx"):
+            brand_col = QColor("#1E1B4B")
+            badge_col = QColor("#9999FF")
+            app_title = "Adobe After Effects Project"
+            icon_char = "Ae"
+        elif e in (".prproj", ".prset"):
+            brand_col = QColor("#3B0764")
+            badge_col = QColor("#EA77FF")
+            app_title = "Adobe Premiere Pro Project"
+            icon_char = "Pr"
+        else:
+            brand_col = QColor("#1E293B")
+            badge_col = QColor("#38BDF8")
+            app_title = "Adobe Project"
+            icon_char = "Ad"
+            
+        # Background gradient & card styling
+        painter.fillRect(0, 0, w, h, QColor("#0B0F19"))
+        painter.fillRect(10, 10, w - 20, 72, brand_col)
+        
+        # Header Badge
+        painter.fillRect(26, 22, 48, 48, QColor(0, 0, 0, 100))
+        painter.setPen(badge_col)
+        painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        painter.drawText(26, 22, 48, 48, Qt.AlignmentFlag.AlignCenter, icon_char)
+        
+        # Header Title
+        painter.setPen(QColor("#FFFFFF"))
+        painter.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        painter.drawText(86, 44, app_title)
+        painter.setFont(QFont("Segoe UI", 11))
+        painter.setPen(QColor("#94A3B8"))
+        fname = Path(file_path).name
+        painter.drawText(86, 66, fname)
+        
+        # Metadata Rows
+        meta = meta or {}
+        rows = []
+        if meta.get("sequence"):
+            rows.append(("Main Sequence:", str(meta["sequence"])))
+        if meta.get("version"):
+            rows.append(("Project Version:", str(meta["version"])))
+            
+        from src.core.decoders import PreviewResult
+        dummy = PreviewResult(QImage(), 0, 0, "", "", size)
+        rows.append(("File Size:", dummy.formatted_size))
+        rows.append(("Format:", e.upper().lstrip(".")))
+        
+        y = 125
+        for label, val in rows:
+            if y > h - 30:
+                break
+            painter.setPen(QColor("#64748B"))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
+            painter.drawText(36, y, 140, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+            
+            painter.setPen(QColor("#F8FAFC"))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+            painter.drawText(180, y, w - 210, 24, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, val[:60])
+            y += 32
+            
+        painter.end()
+        return img
+
+    @classmethod
+    def decode(cls, file_path: str, max_size: int = 1440) -> PreviewResult:
+        size = os.path.getsize(file_path)
+        ext = Path(file_path).suffix.lower()
+        fmt_name = ext.lstrip(".").upper()
+        
+        meta = {}
+        if ext in (".prproj", ".prset"):
+            try:
+                import gzip
+                with gzip.open(file_path, 'rb') as gz:
+                    content = gz.read(65536).decode('utf-8', errors='ignore')
+                    v_match = re.search(r'Version="(\d+)"', content)
+                    if v_match:
+                        meta["version"] = f"Premiere Pro (Schema v{v_match.group(1)})"
+                    s_match = re.search(r'<Sequence[^>]*Name="([^"]+)"', content) or re.search(r'<Name>([^<]+)</Name>', content)
+                    if s_match:
+                        meta["sequence"] = s_match.group(1)
+            except Exception:
+                pass
+                
+        # 2. Try Windows Shell Image Factory (Native Adobe Thumbnail Handler)
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size)
+        if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
+            return PreviewResult(
+                qimage=shell_qim,
+                width=shell_qim.width(),
+                height=shell_qim.height(),
+                mode="RGB (Adobe Preview)",
+                format_name=fmt_name,
+                file_size=size,
+                extra_info="Adobe Project"
+            )
+            
+        # 3. Fallback to Rich Creative Cloud Project Card
+        card = cls._create_fallback_card(ext, file_path, size, meta)
+        return PreviewResult(
+            qimage=card,
+            width=card.width(),
+            height=card.height(),
+            mode="Project Card",
+            format_name=fmt_name,
+            file_size=size,
+            extra_info="Creative Cloud Project"
+        )
+
 class DecoderManager:
     """Master decoder dispatching files to the appropriate zero-lag engine."""
     DECODERS = {
@@ -716,6 +1006,30 @@ class DecoderManager:
         ".svgz": SvgDecoder,
         # PDF
         ".pdf": PdfDecoder,
+        # Microsoft Office & Documents
+        ".docx": OfficeDocDecoder,
+        ".doc": OfficeDocDecoder,
+        ".docm": OfficeDocDecoder,
+        ".dotx": OfficeDocDecoder,
+        ".dot": OfficeDocDecoder,
+        ".rtf": OfficeDocDecoder,
+        ".xlsx": OfficeDocDecoder,
+        ".xls": OfficeDocDecoder,
+        ".xlsm": OfficeDocDecoder,
+        ".xlsb": OfficeDocDecoder,
+        ".xltx": OfficeDocDecoder,
+        ".csv": OfficeDocDecoder,
+        ".pptx": OfficeDocDecoder,
+        ".ppt": OfficeDocDecoder,
+        ".pptm": OfficeDocDecoder,
+        ".ppsx": OfficeDocDecoder,
+        ".potx": OfficeDocDecoder,
+        # Adobe Video & Motion Graphics Projects
+        ".aep": AdobeProjectDecoder,
+        ".aet": AdobeProjectDecoder,
+        ".aepx": AdobeProjectDecoder,
+        ".prproj": AdobeProjectDecoder,
+        ".prset": AdobeProjectDecoder,
         # Video Formats
         ".mp4": VideoDecoder,
         ".mkv": VideoDecoder,

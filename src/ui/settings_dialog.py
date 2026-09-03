@@ -15,14 +15,14 @@ from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import get_license_status, activate_license, get_machine_id
 
 class SettingsDialog(QDialog):
-    """Modern dark-themed preferences dialog for RawView v2.0.5."""
+    """Modern dark-themed preferences dialog for RawView v3.1.1."""
     config_changed = pyqtSignal(dict)
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self.config = config.copy()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION} - Settings")
-        self.setFixedSize(560, 840)
+        self.setFixedSize(580, 780)
         self._init_style()
         self._init_ui()
 
@@ -33,15 +33,37 @@ class SettingsDialog(QDialog):
                 color: #E2E8F0;
                 font-family: 'Segoe UI', sans-serif;
             }
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #0B0E17;
+                width: 8px;
+                margin: 0px 0px 0px 0px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #334155;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #475569;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
             QGroupBox {
                 border: 1px solid #1E293B;
                 border-radius: 10px;
                 margin-top: 14px;
                 padding-top: 12px;
-                font-weight: 600;
-                font-size: 13px;
+                font-weight: 700;
+                font-size: 12px;
                 color: #38BDF8;
-                background-color: rgba(15, 23, 42, 0.6);
+                background-color: #111625;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -49,34 +71,30 @@ class SettingsDialog(QDialog):
                 padding: 0 6px;
             }
             QLabel {
-                color: #CBD5E1;
                 font-size: 12px;
+                color: #CBD5E1;
             }
             QLineEdit {
-                background-color: #1E293B;
-                color: #F8FAFC;
+                background-color: #0F172A;
                 border: 1px solid #334155;
                 border-radius: 6px;
+                color: #F8FAFC;
                 padding: 6px 10px;
                 font-size: 12px;
-                font-weight: 600;
             }
             QLineEdit:focus {
-                border: 1px solid #38BDF8;
+                border-color: #38BDF8;
             }
             QCheckBox {
-                color: #F1F5F9;
                 font-size: 12px;
-                font-weight: 500;
-                min-height: 24px;
-                padding: 2px 4px;
-                spacing: 10px;
+                color: #E2E8F0;
+                spacing: 8px;
             }
             QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 4px;
+                width: 16px;
+                height: 16px;
                 border: 1px solid #475569;
+                border-radius: 4px;
                 background-color: #1E293B;
             }
             QCheckBox::indicator:hover {
@@ -154,8 +172,19 @@ class SettingsDialog(QDialog):
         """)
 
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 16, 20, 16)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(14, 14, 14, 14)
+        root_layout.setSpacing(10)
+
+        # Scroll Area for spacious settings content
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        scroll_widget = QWidget()
+        scroll_widget.setStyleSheet("background: transparent;")
+        main_layout = QVBoxLayout(scroll_widget)
+        main_layout.setContentsMargins(4, 2, 10, 6)
         main_layout.setSpacing(12)
 
         # 1. Pro License & Activation Section
@@ -319,7 +348,53 @@ class SettingsDialog(QDialog):
 
         main_layout.addWidget(gfx_group)
 
-        # 5. Live Video Formats
+        # 5. Microsoft Office & Documents
+        office_group = QGroupBox("Microsoft Office & Documents", self)
+        office_layout = QGridLayout(office_group)
+        office_layout.setContentsMargins(14, 12, 14, 10)
+        office_layout.setHorizontalSpacing(20)
+        office_layout.setVerticalSpacing(6)
+
+        office_items = [
+            (".docx", "Word (.docx, .doc)"),
+            (".xlsx", "Excel (.xlsx, .xls)"),
+            (".pptx", "PowerPoint (.pptx, .ppt)"),
+            (".rtf",  "Rich Text & CSV (.rtf, .csv)"),
+        ]
+
+        for idx, (ext, label) in enumerate(office_items):
+            cb = QCheckBox(label, self)
+            cb.setChecked(ext in active_fmts)
+            self.format_cbs[ext] = cb
+            row = idx // 2
+            col = idx % 2
+            office_layout.addWidget(cb, row, col)
+
+        main_layout.addWidget(office_group)
+
+        # 6. Adobe Video & Motion Projects
+        adobe_group = QGroupBox("Adobe Video & Motion Projects", self)
+        adobe_layout = QGridLayout(adobe_group)
+        adobe_layout.setContentsMargins(14, 12, 14, 10)
+        adobe_layout.setHorizontalSpacing(20)
+        adobe_layout.setVerticalSpacing(6)
+
+        adobe_items = [
+            (".aep", "After Effects (.aep, .aet)"),
+            (".prproj", "Premiere Pro (.prproj, .prset)"),
+        ]
+
+        for idx, (ext, label) in enumerate(adobe_items):
+            cb = QCheckBox(label, self)
+            cb.setChecked(ext in active_fmts)
+            self.format_cbs[ext] = cb
+            row = idx // 2
+            col = idx % 2
+            adobe_layout.addWidget(cb, row, col)
+
+        main_layout.addWidget(adobe_group)
+
+        # 7. Live Video Formats
         vid_group = QGroupBox("Live Video Formats", self)
         vid_layout = QGridLayout(vid_group)
         vid_layout.setContentsMargins(14, 12, 14, 10)
@@ -363,9 +438,12 @@ class SettingsDialog(QDialog):
 
         main_layout.addWidget(cache_group)
 
-        # Action Buttons
+        scroll.setWidget(scroll_widget)
+        root_layout.addWidget(scroll, stretch=1)
+
+        # Action Buttons pinned at bottom
         btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 4, 0, 0)
+        btn_layout.setContentsMargins(4, 4, 4, 0)
         btn_layout.addStretch()
 
         cancel_btn = QPushButton("Cancel", self)
@@ -377,7 +455,7 @@ class SettingsDialog(QDialog):
         save_btn.clicked.connect(self._save_and_apply)
         btn_layout.addWidget(save_btn)
 
-        main_layout.addLayout(btn_layout)
+        root_layout.addLayout(btn_layout)
 
     def _refresh_license_ui(self):
         lic_info = get_license_status()
@@ -468,8 +546,20 @@ class SettingsDialog(QDialog):
                     selected.append(".tif")
                 elif ext == ".svg":
                     selected.append(".svgz")
+                elif ext == ".docx":
+                    selected.extend([".doc", ".docm", ".dotx", ".dot"])
+                elif ext == ".xlsx":
+                    selected.extend([".xls", ".xlsm", ".xlsb", ".xltx"])
+                elif ext == ".pptx":
+                    selected.extend([".ppt", ".pptm", ".ppsx", ".potx"])
+                elif ext == ".rtf":
+                    selected.append(".csv")
+                elif ext == ".aep":
+                    selected.extend([".aet", ".aepx"])
+                elif ext == ".prproj":
+                    selected.append(".prset")
                 elif ext == ".mp4":
-                    selected.append(".m4v")
+                    selected.extend([".m4v", ".mpg", ".mpeg"])
                 elif ext == ".dng":
                     selected.extend([".cr2", ".cr3", ".crw", ".nef", ".nrw", ".arw", ".srf", ".sr2", ".raf", ".orf", ".ori", ".rw2", ".pef", ".ptx", ".3fr", ".fff", ".iiq", ".raw", ".x3f"])
         self.config["supported_formats"] = selected

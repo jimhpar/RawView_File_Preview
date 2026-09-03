@@ -1,14 +1,20 @@
-# RawView (v2.0.5)
+# RawView (v3.1.1)
 
-**RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, and media files in Windows Explorer, Desktop, and File Dialogs.
+**RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, Microsoft Office files, and media projects in Windows Explorer, Desktop, and File Dialogs.
 
 ---
 
 ## 🚀 Features
 
 - **⚡ Zero-Lag Hover Previews**: Instant (<15ms) preview popups on cursor hover with configurable dwell time (40ms–350ms).
-- **🎬 Smooth Live Video Playback**: Instant muted looping video previews for **MP4, MKV, MOV, AVI, WMV, WebM, FLV, TS, 3GP** with live progress tracking and resolution badge.
-- **🎨 Comprehensive Format Support**:
+- **📄 Microsoft Office & Document Previews**:
+  - **Word**: `.docx`, `.doc`, `.docm`, `.dotx`, `.dot`, `.rtf` (embedded thumbnail + page/word count)
+  - **Excel**: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.xltx`, `.csv` (sheet names + financial tables)
+  - **PowerPoint**: `.pptx`, `.ppt`, `.pptm`, `.ppsx`, `.potx` (slide count + presentation overview)
+- **🎬 Adobe Video & Motion Graphics Projects**:
+  - **After Effects**: `.aep`, `.aet`, `.aepx` (project structure + shell thumbnails)
+  - **Premiere Pro**: `.prproj`, `.prset` (sequence names + schema version)
+- **🎨 Comprehensive Graphics & Design Support**:
   - **PSD & PSB**: Adobe Photoshop files (instant composite & layer extraction)
   - **AI**: Adobe Illustrator files (PDF vector rasterization & full workspace previews)
   - **EPS**: Encapsulated PostScript (full artwork XMP canvas & binary TIFF previews)
@@ -16,6 +22,7 @@
   - **Camera RAW**: Ultra-fast embedded previews for DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, and 10+ other formats
   - **TIFF & TIF**: Multi-page, 16-bit, and high-dynamic range images
   - **SVG & SVGZ**: Scalable Vector Graphics with GPU rasterization
+- **🎬 Smooth Live Video Playback**: Instant muted looping video previews for **MP4, MKV, MOV, AVI, WMV, WebM, FLV, TS, 3GP** with live progress tracking and resolution badge.
 - **📂 Multi-Tab & Blank Space Isolation**: Intelligent cursor containment prevents phantom previews when hovering over empty space or switching between multiple Explorer tabs.
 - **⏳ 7-Day Free Unlimited Trial**: Unrestricted access to 100% of all features and formats.
 - **🔐 Hardware ID Offline Pro Licensing**: Machine-locked cryptographic activation with zero server dependency.
@@ -30,7 +37,7 @@
   - `Ctrl + O` / Enter: Open file in default application
   - `Esc`: Close preview immediately
 - **⚙️ System Tray & Settings**:
-  - Modern spacious settings dialog with categorized format toggles (Graphics vs Videos)
+  - Modern scrollable settings dialog with categorized format toggles (Graphics, Office, Adobe Projects, Videos)
   - Pro License activation hub with 1-click Machine Code copy and support links
   - Speed presets (Ultra-Fast 80ms, Fast 120ms, Relaxed 250ms)
   - Cache manager and Windows Boot Autostart
@@ -40,10 +47,10 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v2.0.5_Setup.exe` installer:
+To compile the standalone `RawView_v3.1.1_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v2.0.5_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v3.1.1_Setup.exe`.

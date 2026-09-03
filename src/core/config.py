@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v2.0.5"
+APP_VERSION = "v3.1.1"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v2.0.5"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.1.1"
 
 # Supported extensions
 SUPPORTED_EXTENSIONS = {
@@ -19,6 +19,20 @@ SUPPORTED_EXTENSIONS = {
     ".svgz":"Compressed SVG",
     # Documents & Publishing
     ".pdf": "Portable Document Format",
+    ".docx": "Microsoft Word",
+    ".doc": "Microsoft Word Legacy",
+    ".xlsx": "Microsoft Excel",
+    ".xls": "Microsoft Excel Legacy",
+    ".pptx": "Microsoft PowerPoint",
+    ".ppt": "Microsoft PowerPoint Legacy",
+    ".rtf": "Rich Text Format",
+    ".csv": "Comma Separated Values",
+    # Adobe Projects
+    ".aep": "After Effects Project",
+    ".aet": "After Effects Template",
+    ".aepx": "After Effects XML Project",
+    ".prproj": "Premiere Pro Project",
+    ".prset": "Premiere Pro Preset",
     # Raster Images
     ".tif": "TIFF Image",
     ".tiff":"TIFF Image",

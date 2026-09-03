@@ -1,10 +1,27 @@
-# 🚀 RawView v2.0.5 Release Notes
+# 🚀 RawView v3.1.1 Release Notes
 
-**RawView v2.0.5** resolves a critical bug in **Windows 11 Multi-Tab Explorer**, ensuring that files across *all open tabs* are discovered and previewed instantly without tab cross-contamination or missed previews.
+**RawView v3.1.1** is a landmark release introducing instant, hardware-accelerated preview popups for **Microsoft Office documents** (Word, Excel, PowerPoint, RTF, CSV) and **Adobe Creative Cloud video project files** (After Effects `.aep`, Premiere Pro `.prproj`) directly inside Windows Explorer, Desktop, and Open/Save dialogs.
 
 ---
 
-## 🌟 What's New in v2.0.5
+## 🌟 What's New in v3.1.1
+
+### 📄 1. Microsoft Office & Document Previews
+* **Microsoft Word (`.docx`, `.doc`, `.docm`, `.dotx`, `.dot`, `.rtf`)**: Zero-lag embedded OpenXML thumbnail extraction with page count, word count, document title, and author information.
+* **Microsoft Excel (`.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.xltx`, `.csv`)**: Instant spreadsheet previews displaying workbook title, sheet names (`Summary`, `Revenue`, etc.), and structural metadata.
+* **Microsoft PowerPoint (`.pptx`, `.ppt`, `.pptm`, `.ppsx`, `.potx`)**: Slide deck overview showing slide counts, presentation titles, and high-resolution slide thumbnails.
+
+### 🎬 2. Adobe Video & Motion Graphics Projects
+* **Adobe After Effects (`.aep`, `.aet`, `.aepx`)**: Hardware-accelerated shell thumbnail rendering with composition structure and file statistics.
+* **Adobe Premiere Pro (`.prproj`, `.prset`)**: Compressed project header inspector extracting project version, active sequence names, and video format information.
+
+### ⚙️ 3. Redesigned Scrollable Settings Hub
+* **Categorized Format Preferences**: Dedicated control groups for **Graphics & Design**, **Microsoft Office & Documents**, **Adobe Video Projects**, and **Live Video Playback**.
+* **Responsive Scroll Viewport**: Settings dialog now dynamically fits all monitor resolutions with smooth vertical scrolling and sticky action buttons.
+
+---
+
+# 🚀 RawView v2.0.5 Release Notes
 
 ### 📂 1. Comprehensive Windows 11 Multi-Tab Support
 - **Full Tab Discovery**: Fixed an issue where open tabs sharing the same top-level Explorer window handle would cause non-primary tabs to fail resolution.
@@ -76,6 +93,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v2.0.5_Setup.exe` (~121.95 MB)
+- **Installer**: `dist_installer/RawView_v3.1.1_Setup.exe` (~122 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC
