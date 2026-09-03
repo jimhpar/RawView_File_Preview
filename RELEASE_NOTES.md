@@ -1,10 +1,19 @@
-# 🚀 RawView v3.1.3 Release Notes
+# 🚀 RawView v3.1.4 Release Notes
 
-**RawView v3.1.3** introduces intelligent deep project parsing for **Adobe After Effects (`.aep`, `.aet`)**, extracting real composition names, active layers, and linked footage assets directly onto a redesigned, high-contrast Creative Cloud project card with crisp typography.
+**RawView v3.1.4** delivers **Smart Linked Video & Footage Playback** for **Adobe After Effects (`.aep`)** and **Premiere Pro (`.prproj`)**, automatically playing matching rendered MP4/MOV output videos and timeline footage clips with instant hardware-accelerated video playback on hover.
 
 ---
 
-## 🌟 What's New in v3.1.3
+## 🌟 What's New in v3.1.4
+
+### 🎬 1. Smart Linked Video & Footage Playback
+* **Automatic Render & Output Resolution**: Discovers matching exported video files (`Render/`, `Output/`, `Export/`, or same directory) and plays them instantly in the preview HUD with 60 FPS muted looping.
+* **Deep Timeline Footage Discovery**: Automatically resolves linked video footage clips (`.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`, `.m4v`) referenced in the project timeline and plays them live on cursor hover.
+* **Motion Graphics & Typography Visualizer**: For pure text/shape animation projects with no linked video footage, displays the high-contrast Typography & Motion Design showcase card with composition badges and layer properties.
+
+---
+
+# 🚀 RawView v3.1.3 Release Notes
 
 ### 🎬 1. Deep After Effects Composition & Layer Extraction
 * **RIFX Project Tree Parsing**: RawView now inspects After Effects binary chunks to extract actual composition names (e.g. `50 TK`, `Outro`, `Intro Animation`) and linked footage assets.
@@ -113,6 +122,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v3.1.3_Setup.exe` (~122 MB)
+- **Installer**: `dist_installer/RawView_v3.1.4_Setup.exe` (~122 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC

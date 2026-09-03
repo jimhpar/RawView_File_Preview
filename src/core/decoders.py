@@ -1113,12 +1113,76 @@ class AdobeProjectDecoder:
         painter.end()
         return img
 
+    @staticmethod
+    def _find_linked_video(file_path: str) -> str:
+        parent_dir = os.path.dirname(file_path)
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # Priority 1: Matching rendered/exported video in project dir or common subdirectories
+        search_dirs = [
+            parent_dir,
+            os.path.join(parent_dir, 'Render'),
+            os.path.join(parent_dir, 'Output'),
+            os.path.join(parent_dir, 'Export'),
+            os.path.join(parent_dir, 'Exports'),
+            os.path.join(parent_dir, 'Fills'),
+            os.path.join(parent_dir, 'Stock')
+        ]
+        for sdir in search_dirs:
+            if os.path.isdir(sdir):
+                for vext in ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'):
+                    cand = os.path.join(sdir, base_name + vext)
+                    if os.path.exists(cand):
+                        return cand
+                        
+        # Priority 2: Video files referenced inside the project binary
+        try:
+            with open(file_path, 'rb') as fp:
+                data = fp.read()
+                
+            # Direct absolute paths on disk
+            path_refs = re.findall(rb'([A-Za-z]:\\[^:\*\?\"\<\>\|\r\n\x00-\x1f]{3,200}\.(?:mp4|mov|avi|mkv|webm|m4v|wmv))', data, re.IGNORECASE)
+            for p_bytes in path_refs:
+                cand = p_bytes.decode('utf-8', errors='ignore')
+                if os.path.exists(cand):
+                    return cand
+                    
+            # Relative video filenames searched in common folders
+            video_refs = re.findall(rb'([A-Za-z0-9_\- ]+\.(?:mp4|mov|avi|mkv|webm|m4v|wmv))', data, re.IGNORECASE)
+            for vname_bytes in video_refs:
+                vname = vname_bytes.decode('utf-8', errors='ignore')
+                for sdir in search_dirs:
+                    cand = os.path.join(sdir, vname)
+                    if os.path.exists(cand):
+                        return cand
+        except Exception:
+            pass
+        return None
+
     @classmethod
     def decode(cls, file_path: str, max_size: int = 1440) -> PreviewResult:
         size = os.path.getsize(file_path)
         ext = Path(file_path).suffix.lower()
         fmt_name = ext.lstrip(".").upper()
         
+        # 1. Smart Linked Video Playback (Play live video if linked footage or render exists)
+        linked_video = cls._find_linked_video(file_path)
+        if linked_video and os.path.exists(linked_video):
+            v_res = VideoDecoder.decode(linked_video)
+            if v_res.is_video:
+                return PreviewResult(
+                    qimage=v_res.qimage,
+                    width=v_res.width,
+                    height=v_res.height,
+                    mode="Live Footage",
+                    format_name=fmt_name,
+                    file_size=size,
+                    is_video=True,
+                    video_path=linked_video,
+                    extra_info=f"Linked: {Path(linked_video).name}"
+                )
+        
+        # 2. Extract Composition & Layer Metadata for Typography / Shape visualizer
         meta = {}
         if ext in (".aep", ".aet", ".aepx"):
             meta = cls._parse_aep_details(file_path)
@@ -1136,7 +1200,7 @@ class AdobeProjectDecoder:
             except Exception:
                 pass
                 
-        # 2. Try Windows Shell Image Factory STRICTLY for actual rendered project thumbnails (thumbnail_only=True)
+        # 3. Try Windows Shell Image Factory STRICTLY for actual rendered project thumbnails (thumbnail_only=True)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
             return PreviewResult(
@@ -1149,7 +1213,7 @@ class AdobeProjectDecoder:
                 extra_info="Adobe Project"
             )
             
-        # 3. Fallback to Rich Creative Cloud Project Card
+        # 4. Fallback to Rich Motion Graphics & Typography Showcase Card
         card = cls._create_fallback_card(ext, file_path, size, meta)
         return PreviewResult(
             qimage=card,
