@@ -60,6 +60,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v2.0.2_Setup.exe` (~121.95 MB)
+- **Installer**: `dist_installer/RawView_v2.0.3_Setup.exe` (~121.95 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC
