@@ -154,6 +154,7 @@ class RawViewApp(QObject):
         self.hover_monitor.hover_cleared.connect(self._on_hover_cleared)
         self.hover_monitor.space_pin_requested.connect(self.preview_hud.toggle_pin)
         self.hover_monitor.escape_requested.connect(self.preview_hud.dismiss)
+        self.hover_monitor.toggle_enabled_requested.connect(self._on_toggle_enabled)
 
         # Connect bidirectional preview state for global key interception
         self.preview_hud.visibility_changed.connect(self.hover_monitor.set_preview_visible)
@@ -212,6 +213,27 @@ class RawViewApp(QObject):
         self.config = new_config
         self.hover_monitor.update_config(new_config)
         self.preview_hud.config = new_config
+
+    def _on_toggle_enabled(self):
+        """Handles Ctrl+` global hotkey: toggles hover preview enabled state system-wide."""
+        new_state = not self.config.get("enabled", True)
+        self.config["enabled"] = new_state
+        save_config(self.config)
+        self.hover_monitor.update_config(self.config)
+        self.preview_hud.config = self.config
+        # Sync tray menu checkbox
+        self.tray_manager.toggle_action.setChecked(new_state)
+        # Dismiss any active preview when disabling
+        if not new_state:
+            self.preview_hud.dismiss()
+        # Show a brief tray balloon notification
+        status_text = "✅ Hover Preview Enabled" if new_state else "⏸ Hover Preview Disabled"
+        self.tray_manager.tray.showMessage(
+            APP_NAME,
+            status_text,
+            self.tray_manager.icon,
+            1500
+        )
 
     def shutdown(self):
         self.hover_monitor.stop()

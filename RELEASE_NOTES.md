@@ -1,6 +1,6 @@
 # 🚀 RawView v3.1.6 Release Notes
 
-**RawView v3.1.6** fixes a zoom blur issue where high-zoom previews (200%+) appeared blurry due to upscaling beyond the source image's native resolution. Zoomed views now render pixel-perfect and sharp at all zoom levels.
+**RawView v3.1.6** brings pixel-perfect high-zoom rendering and a new global `Ctrl+\`` keyboard shortcut to toggle hover previews on/off instantly from anywhere.
 
 ---
 
@@ -10,6 +10,12 @@
 * **Native Resolution Cap**: Zoom scaling is now capped at the source image's native pixel dimensions. Previously, zooming beyond the display-fit base size caused Qt to upscale beyond available pixel data, producing bilinear blur artifacts.
 * **Adaptive Transformation Mode**: Zoom levels above 200% now use `FastTransformation` (nearest-neighbor) for crisp, pixel-perfect rendering — matching behavior in professional tools like Photoshop and Figma. Zoom levels at or below 200% continue to use `SmoothTransformation` (bilinear anti-aliasing) for a pleasant downscale appearance.
 * **Impact**: All image formats (PSD, PSB, AI, EPS, PDF, TIFF, RAW, and more) benefit from sharp, clear zoom rendering from 50% up to 800%.
+
+### ⌨️ 2. Global `Ctrl+\`` Hotkey — Instant Preview Toggle
+* **System-Wide On/Off Toggle**: Press `Ctrl+\`` from anywhere on Windows (Explorer, Desktop, any window) to instantly enable or disable hover previews without opening the tray menu.
+* **Tray Sync**: The System Tray menu checkbox automatically reflects the new state after each toggle.
+* **Tray Notification**: A brief balloon notification confirms the current state — ✅ *Hover Preview Enabled* or ⏸ *Hover Preview Disabled*.
+* **Auto-Dismiss**: Disabling via hotkey immediately dismisses any currently visible preview HUD.
 
 ---
 
@@ -133,6 +139,7 @@
 
 | Action | Control | Description |
 | :--- | :--- | :--- |
+| **Toggle Preview On/Off** | `Ctrl + \`` | Enables or disables hover previews globally (system-wide hotkey, works anywhere) |
 | **Pin Preview** | `Space` | Keeps the preview window open even when cursor moves away |
 | **Play / Pause Video** | `Space` *(when pinned)* | Toggles live video playback |
 | **Zoom In / Out** | `Mouse Wheel` | Smoothly zooms images and vector graphics from 50% to 800% |

@@ -159,6 +159,7 @@ class ExplorerHoverMonitor(QObject):
     hover_cleared = pyqtSignal()
     space_pin_requested = pyqtSignal()
     escape_requested = pyqtSignal()
+    toggle_enabled_requested = pyqtSignal() # Emitted on Ctrl+` global hotkey
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
@@ -178,6 +179,7 @@ class ExplorerHoverMonitor(QObject):
         self._last_resolved_pos = QPoint(-1, -1)
         self.space_key_down = False
         self.esc_key_down = False
+        self.ctrl_backtick_down = False
         
         # Desktop candidate folders
         self.desktop_paths = [
@@ -234,6 +236,16 @@ class ExplorerHoverMonitor(QObject):
                 return
             elif not esc_state:
                 self.esc_key_down = False
+
+        # Ctrl+` global hotkey: toggle hover preview ON/OFF (works system-wide, always)
+        # VK_CONTROL = 0x11, VK_OEM_3 = 0xC0 (backtick/grave accent key)
+        ctrl_state = bool(win32api.GetAsyncKeyState(0x11) & 0x8000)
+        backtick_state = bool(win32api.GetAsyncKeyState(0xC0) & 0x8000)
+        if ctrl_state and backtick_state and not self.ctrl_backtick_down:
+            self.ctrl_backtick_down = True
+            self.toggle_enabled_requested.emit()
+        elif not (ctrl_state and backtick_state):
+            self.ctrl_backtick_down = False
 
         if not self.enabled:
             if self.is_hover_active:

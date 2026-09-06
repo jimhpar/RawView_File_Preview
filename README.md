@@ -31,6 +31,7 @@
   - **L1 In-Memory LRU Cache**: Sub-millisecond instant recall for active browsing
   - **L2 Persistent Disk Cache**: Compressed thumbnail storage with hash-based invalidation
 - **🖱️ Interactive Controls**:
+  - `Ctrl + \``: Toggle hover preview **On / Off** globally (system-wide hotkey)
   - `Space`: Pin preview window or Play/Pause video
   - Mouse Wheel: Zoom in / zoom out (images & vectors)
   - `Ctrl + C`: Copy preview image to clipboard
@@ -47,10 +48,10 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v3.1.5_Setup.exe` installer:
+To compile the standalone `RawView_v3.1.6_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v3.1.5_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v3.1.6_Setup.exe`.
