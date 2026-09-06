@@ -159,6 +159,30 @@ def pil_to_qimage(pil_img: Image.Image) -> QImage:
         qim = QImage(data, rgba.width, rgba.height, QImage.Format.Format_RGBA8888)
         return qim.copy()
 
+def _is_blank_image(qim: QImage, threshold: int = 248, sample_count: int = 64) -> bool:
+    """Detects if a QImage is nearly blank (all white/near-white) by sampling a grid of pixels.
+    Returns True if the image appears to be a blank white page with no visible artwork.
+    Used to reject empty PDF compatibility stream renders from AI files."""
+    if qim.isNull() or qim.width() < 10 or qim.height() < 10:
+        return True
+    w, h = qim.width(), qim.height()
+    # Sample pixels in a grid pattern, avoiding 5% edge margins
+    margin_x = max(int(w * 0.05), 1)
+    margin_y = max(int(h * 0.05), 1)
+    step_x = max((w - 2 * margin_x) // int(sample_count ** 0.5), 1)
+    step_y = max((h - 2 * margin_y) // int(sample_count ** 0.5), 1)
+    bright_count = 0
+    total_count = 0
+    for sx in range(margin_x, w - margin_x, step_x):
+        for sy in range(margin_y, h - margin_y, step_y):
+            c = qim.pixelColor(sx, sy)
+            total_count += 1
+            if c.red() >= threshold and c.green() >= threshold and c.blue() >= threshold:
+                bright_count += 1
+    if total_count == 0:
+        return True
+    return (bright_count / total_count) >= 0.97
+
 class PsdDecoder:
     """High-speed decoder for Adobe Photoshop PSD and PSB files."""
     @staticmethod
@@ -283,7 +307,7 @@ class AiDecoder:
                 if pix.width > 0 and pix.height > 0:
                     data = pix.tobytes("png")
                     qim = QImage.fromData(QByteArray(data))
-                    if not qim.isNull():
+                    if not qim.isNull() and not _is_blank_image(qim):
                         mode_str = "RGB (Vector Artboard)"
                         extra = f"Artboards: {len(doc)}"
                         if has_overflow:
@@ -312,18 +336,19 @@ class AiDecoder:
 
                 pil_img = page.render(scale=scale).to_pil()
                 qim = pil_to_qimage(pil_img)
-                extra = f"Artboards: {len(pdf)}"
-                if has_overflow:
-                    extra += " (elements outside artboard clipped)"
-                return PreviewResult(
-                    qimage=qim,
-                    width=page_w,
-                    height=page_h,
-                    mode="RGB (Vector Artboard)",
-                    format_name="AI",
-                    file_size=size,
-                    extra_info=extra
-                )
+                if not _is_blank_image(qim):
+                    extra = f"Artboards: {len(pdf)}"
+                    if has_overflow:
+                        extra += " (elements outside artboard clipped)"
+                    return PreviewResult(
+                        qimage=qim,
+                        width=page_w,
+                        height=page_h,
+                        mode="RGB (Vector Artboard)",
+                        format_name="AI",
+                        file_size=size,
+                        extra_info=extra
+                    )
         except Exception:
             pass
 
