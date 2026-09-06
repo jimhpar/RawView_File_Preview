@@ -146,6 +146,14 @@ class ImageCanvas(QLabel):
         else:
             w = self.max_display_w
             h = int(w / aspect)
+
+        # Quality cap: don't upscale beyond 2x to avoid blurriness on tiny thumbnails.
+        # A 256px XMP thumbnail stretched to 640px (2.5x) looks terrible; cap at 512px (2x).
+        max_upscale = 2.0
+        if w > orig_w * max_upscale or h > orig_h * max_upscale:
+            w = min(w, int(orig_w * max_upscale))
+            h = min(h, int(orig_h * max_upscale))
+
         return QSize(max(w, 100), max(h, 80))
 
     def _update_scaled_pixmap(self):

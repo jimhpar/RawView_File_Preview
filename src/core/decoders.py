@@ -278,8 +278,9 @@ class PsdDecoder:
 class AiDecoder:
     """
     High-speed, high-fidelity decoder for Adobe Illustrator AI files.
-    Prioritizes vector rasterization (PyMuPDF/PDFium) for crisp, zoom-friendly previews.
-    Falls back to XMP embedded thumbnail only when no PDF compatibility stream exists.
+    Priority: Shell full render (complete workspace) → vector rasterization (artboard only) → XMP thumbnail.
+    Shell handlers use Adobe's native renderer for full workspace coverage.
+    Vector rasterizers (PyMuPDF/PDFium) are only used when artwork fits within the artboard.
     """
     @staticmethod
     def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
@@ -312,72 +313,24 @@ class AiDecoder:
         except Exception:
             pass
 
-        # 2. PyMuPDF Vector Rasterizer — always try first for crisp, high-res output
-        #    This produces zoom-friendly images at 1440px+ resolution vs 256px XMP thumbnails.
-        try:
-            doc = fitz.open(file_path)
-            if len(doc) > 0:
-                page = doc[0]
-                rect = page.rect
-                page_w = max(int(rect.width), 10)
-                page_h = max(int(rect.height), 10)
+        # 2. Native Windows Shell — FULL RENDER (not thumbnail_only)
+        #    Adobe's Shell extension renders the complete workspace at high resolution.
+        #    This gives full workspace coverage AND high resolution (best of both worlds).
+        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=False)
+        if shell_qim and not shell_qim.isNull() and not _is_blank_image(shell_qim):
+            return PreviewResult(
+                qimage=shell_qim,
+                width=shell_qim.width(),
+                height=shell_qim.height(),
+                mode="RGB (Full Workspace)",
+                format_name="AI",
+                file_size=size,
+                extra_info="Native Render"
+            )
 
-                # Render at high DPI for crisp zoom (up to 300 DPI)
-                dpi = int(min(max_size / max(page_w, page_h, 1) * 72, 300))
-                dpi = max(dpi, 72)
-                pix = page.get_pixmap(dpi=dpi)
-
-                if pix.width > 0 and pix.height > 0:
-                    data = pix.tobytes("png")
-                    qim = QImage.fromData(QByteArray(data))
-                    if not qim.isNull() and not _is_blank_image(qim):
-                        mode_str = "RGB (Vector Artboard)"
-                        extra = f"Artboards: {len(doc)}"
-                        if has_overflow:
-                            extra += " (elements outside artboard clipped)"
-                        return PreviewResult(
-                            qimage=qim,
-                            width=page_w,
-                            height=page_h,
-                            mode=mode_str,
-                            format_name="AI",
-                            file_size=size,
-                            extra_info=extra
-                        )
-        except Exception:
-            pass
-
-        # 3. PDFium rasterizer (fallback vector engine)
-        try:
-            pdf = pdfium.PdfDocument(file_path)
-            if len(pdf) > 0:
-                page = pdf[0]
-                page_w = int(page.get_width())
-                page_h = int(page.get_height())
-                scale = min(max_size / max(page_w, page_h, 1), 3.0)
-                scale = max(scale, 1.0)
-
-                pil_img = page.render(scale=scale).to_pil()
-                qim = pil_to_qimage(pil_img)
-                if not _is_blank_image(qim):
-                    extra = f"Artboards: {len(pdf)}"
-                    if has_overflow:
-                        extra += " (elements outside artboard clipped)"
-                    return PreviewResult(
-                        qimage=qim,
-                        width=page_w,
-                        height=page_h,
-                        mode="RGB (Vector Artboard)",
-                        format_name="AI",
-                        file_size=size,
-                        extra_info=extra
-                    )
-        except Exception:
-            pass
-
-        # 4. Native Windows Shell Handler (fallback for non-PDF AI files)
+        # 3. Shell thumbnail_only=True (cached Explorer thumbnail, faster but smaller)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
-        if shell_qim and not shell_qim.isNull():
+        if shell_qim and not shell_qim.isNull() and not _is_blank_image(shell_qim):
             return PreviewResult(
                 qimage=shell_qim,
                 width=shell_qim.width(),
@@ -388,8 +341,65 @@ class AiDecoder:
                 extra_info="Native Thumbnail"
             )
 
-        # 5. XMP embedded thumbnail — last resort for AI files without PDF compatibility stream
-        #    These are typically small JPEG thumbnails (~256px) embedded by Illustrator.
+        # 4. Vector rasterizers — ONLY when artwork fits within the artboard (no overflow).
+        #    PyMuPDF/PDFium render only the page/artboard area and clip everything outside.
+        #    If has_overflow=True, skip vector entirely to avoid losing content (logos, bleed, etc).
+        if not has_overflow:
+            # 4a. PyMuPDF Vector Rasterizer
+            try:
+                doc = fitz.open(file_path)
+                if len(doc) > 0:
+                    page = doc[0]
+                    rect = page.rect
+                    page_w = max(int(rect.width), 10)
+                    page_h = max(int(rect.height), 10)
+
+                    dpi = int(min(max_size / max(page_w, page_h, 1) * 72, 300))
+                    dpi = max(dpi, 72)
+                    pix = page.get_pixmap(dpi=dpi)
+
+                    if pix.width > 0 and pix.height > 0:
+                        data = pix.tobytes("png")
+                        qim = QImage.fromData(QByteArray(data))
+                        if not qim.isNull() and not _is_blank_image(qim):
+                            return PreviewResult(
+                                qimage=qim,
+                                width=page_w,
+                                height=page_h,
+                                mode="RGB (Vector Artboard)",
+                                format_name="AI",
+                                file_size=size,
+                                extra_info=f"Artboards: {len(doc)}"
+                            )
+            except Exception:
+                pass
+
+            # 4b. PDFium rasterizer
+            try:
+                pdf = pdfium.PdfDocument(file_path)
+                if len(pdf) > 0:
+                    page = pdf[0]
+                    page_w = int(page.get_width())
+                    page_h = int(page.get_height())
+                    scale = min(max_size / max(page_w, page_h, 1), 3.0)
+                    scale = max(scale, 1.0)
+
+                    pil_img = page.render(scale=scale).to_pil()
+                    qim = pil_to_qimage(pil_img)
+                    if not _is_blank_image(qim):
+                        return PreviewResult(
+                            qimage=qim,
+                            width=page_w,
+                            height=page_h,
+                            mode="RGB (Vector Artboard)",
+                            format_name="AI",
+                            file_size=size,
+                            extra_info=f"Artboards: {len(pdf)}"
+                        )
+            except Exception:
+                pass
+
+        # 5. XMP embedded thumbnail — last resort (full workspace but typically only ~256px)
         qim = extract_xmp_image(file_path)
         if qim and not qim.isNull():
             return PreviewResult(
