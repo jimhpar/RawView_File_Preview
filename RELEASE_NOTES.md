@@ -1,3 +1,18 @@
+# 🚀 RawView v3.1.6 Release Notes
+
+**RawView v3.1.6** fixes a zoom blur issue where high-zoom previews (200%+) appeared blurry due to upscaling beyond the source image's native resolution. Zoomed views now render pixel-perfect and sharp at all zoom levels.
+
+---
+
+## 🌟 What's New in v3.1.6
+
+### 🔍 1. Fixed Zoom Blur — Pixel-Perfect High-Zoom Rendering
+* **Native Resolution Cap**: Zoom scaling is now capped at the source image's native pixel dimensions. Previously, zooming beyond the display-fit base size caused Qt to upscale beyond available pixel data, producing bilinear blur artifacts.
+* **Adaptive Transformation Mode**: Zoom levels above 200% now use `FastTransformation` (nearest-neighbor) for crisp, pixel-perfect rendering — matching behavior in professional tools like Photoshop and Figma. Zoom levels at or below 200% continue to use `SmoothTransformation` (bilinear anti-aliasing) for a pleasant downscale appearance.
+* **Impact**: All image formats (PSD, PSB, AI, EPS, PDF, TIFF, RAW, and more) benefit from sharp, clear zoom rendering from 50% up to 800%.
+
+---
+
 # 🚀 RawView v3.1.5 Release Notes
 
 **RawView v3.1.5** fixes a critical video source binding bug where `QMediaPlayer` attempted to load raw `.aep` / `.prproj` binary project paths instead of the resolved linked MP4/MOV footage, restoring instant, smooth 60 FPS live video playback for Adobe projects.
@@ -130,6 +145,6 @@
 ---
 
 ## 📦 Installer Package
-- **Installer**: `dist_installer/RawView_v3.1.5_Setup.exe` (~122 MB)
+- **Installer**: `dist_installer/RawView_v3.1.6_Setup.exe` (~122 MB)
 - **Target OS**: Windows 10 & Windows 11 (64-bit)
 - **Publisher**: BlackBox THC

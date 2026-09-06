@@ -1,4 +1,4 @@
-# RawView (v3.1.5)
+# RawView (v3.1.6)
 
 **RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, Microsoft Office files, and media projects in Windows Explorer, Desktop, and File Dialogs.
 

@@ -154,11 +154,26 @@ class ImageCanvas(QLabel):
         target_w = max(int(base_sz.width() * self.zoom_factor), 10)
         target_h = max(int(base_sz.height() * self.zoom_factor), 10)
 
-        # Scale directly from full-resolution master buffer with smooth bilinear antialiasing
+        # Cap target size to source image's native resolution to avoid upscale blur.
+        # Beyond native resolution there is no extra pixel data — only interpolation artifacts.
+        src_w = self._source_qimage.width()
+        src_h = self._source_qimage.height()
+        target_w = min(target_w, src_w)
+        target_h = min(target_h, src_h)
+
+        # Choose transformation mode based on zoom level:
+        #   > 200%  → FastTransformation (nearest-neighbor): pixel-perfect, no blur
+        #   ≤ 200%  → SmoothTransformation (bilinear): anti-aliased, pleasant downscale
+        if self.zoom_factor > 2.0:
+            transform_mode = Qt.TransformationMode.FastTransformation
+        else:
+            transform_mode = Qt.TransformationMode.SmoothTransformation
+
+        # Scale directly from full-resolution master buffer
         scaled_qim = self._source_qimage.scaled(
             target_w, target_h,
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
+            transform_mode
         )
         self._cached_pixmap = QPixmap.fromImage(scaled_qim)
 
