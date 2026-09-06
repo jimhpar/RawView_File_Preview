@@ -154,17 +154,17 @@ class ImageCanvas(QLabel):
         target_w = max(int(base_sz.width() * self.zoom_factor), 10)
         target_h = max(int(base_sz.height() * self.zoom_factor), 10)
 
-        # Cap target size to source image's native resolution to avoid upscale blur.
-        # Beyond native resolution there is no extra pixel data — only interpolation artifacts.
         src_w = self._source_qimage.width()
         src_h = self._source_qimage.height()
-        target_w = min(target_w, src_w)
-        target_h = min(target_h, src_h)
 
-        # Choose transformation mode based on zoom level:
-        #   > 200%  → FastTransformation (nearest-neighbor): pixel-perfect, no blur
-        #   ≤ 200%  → SmoothTransformation (bilinear): anti-aliased, pleasant downscale
-        if self.zoom_factor > 2.0:
+        # Choose transformation mode based on whether we are upscaling or downscaling:
+        #   Upscaling  (target > source): FastTransformation (nearest-neighbor) — pixel-perfect, no blur
+        #   Downscaling (target ≤ source): SmoothTransformation (bilinear)     — anti-aliased, smooth
+        #
+        # This is smarter than a fixed zoom-factor threshold because large images (e.g. 4167px)
+        # are still being DOWNSCALED even at 800% zoom (target=3840 < src=4167), so they benefit
+        # from SmoothTransformation. Small images begin upscaling at much lower zoom levels.
+        if target_w > src_w or target_h > src_h:
             transform_mode = Qt.TransformationMode.FastTransformation
         else:
             transform_mode = Qt.TransformationMode.SmoothTransformation
@@ -176,6 +176,7 @@ class ImageCanvas(QLabel):
             transform_mode
         )
         self._cached_pixmap = QPixmap.fromImage(scaled_qim)
+
 
     def zoom(self, factor: float, center_point: QPoint = None):
         old_zoom = self.zoom_factor
