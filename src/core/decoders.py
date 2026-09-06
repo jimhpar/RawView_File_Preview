@@ -159,29 +159,52 @@ def pil_to_qimage(pil_img: Image.Image) -> QImage:
         qim = QImage(data, rgba.width, rgba.height, QImage.Format.Format_RGBA8888)
         return qim.copy()
 
-def _is_blank_image(qim: QImage, threshold: int = 248, sample_count: int = 64) -> bool:
-    """Detects if a QImage is nearly blank (all white/near-white) by sampling a grid of pixels.
-    Returns True if the image appears to be a blank white page with no visible artwork.
-    Used to reject empty PDF compatibility stream renders from AI files."""
+def _is_blank_image(qim: QImage, threshold: int = 240, sample_count: int = 100) -> bool:
+    """Detects if a QImage is nearly blank by sampling a grid of pixels.
+    Uses both brightness AND color variance checks:
+    - Brightness: >95% of samples are near-white (R,G,B >= threshold)
+    - Variance: Very low color diversity (all pixels are similar shade) indicates
+      an empty page with minor rendering artifacts (gray corners, faint lines).
+    Returns True if the image appears to be a blank page with no real artwork."""
     if qim.isNull() or qim.width() < 10 or qim.height() < 10:
         return True
     w, h = qim.width(), qim.height()
     # Sample pixels in a grid pattern, avoiding 5% edge margins
     margin_x = max(int(w * 0.05), 1)
     margin_y = max(int(h * 0.05), 1)
-    step_x = max((w - 2 * margin_x) // int(sample_count ** 0.5), 1)
-    step_y = max((h - 2 * margin_y) // int(sample_count ** 0.5), 1)
+    grid_side = int(sample_count ** 0.5)
+    step_x = max((w - 2 * margin_x) // grid_side, 1)
+    step_y = max((h - 2 * margin_y) // grid_side, 1)
     bright_count = 0
     total_count = 0
+    r_sum, g_sum, b_sum = 0, 0, 0
+    r_sq_sum, g_sq_sum, b_sq_sum = 0, 0, 0
     for sx in range(margin_x, w - margin_x, step_x):
         for sy in range(margin_y, h - margin_y, step_y):
             c = qim.pixelColor(sx, sy)
+            r, g, b = c.red(), c.green(), c.blue()
             total_count += 1
-            if c.red() >= threshold and c.green() >= threshold and c.blue() >= threshold:
+            r_sum += r; g_sum += g; b_sum += b
+            r_sq_sum += r*r; g_sq_sum += g*g; b_sq_sum += b*b
+            if r >= threshold and g >= threshold and b >= threshold:
                 bright_count += 1
     if total_count == 0:
         return True
-    return (bright_count / total_count) >= 0.97
+    # Check 1: Nearly all pixels are bright white
+    if (bright_count / total_count) >= 0.95:
+        return True
+    # Check 2: Very low color variance (uniform shade = blank page with artifacts)
+    # A real artwork has diverse colors; a blank page with gray corners has very low variance.
+    r_var = (r_sq_sum / total_count) - (r_sum / total_count) ** 2
+    g_var = (g_sq_sum / total_count) - (g_sum / total_count) ** 2
+    b_var = (b_sq_sum / total_count) - (b_sum / total_count) ** 2
+    avg_variance = (r_var + g_var + b_var) / 3.0
+    avg_brightness = (r_sum + g_sum + b_sum) / (total_count * 3.0)
+    # If average brightness is high (>200) AND variance is very low (<150), it's blank
+    if avg_brightness > 200 and avg_variance < 150:
+        return True
+    return False
+
 
 class PsdDecoder:
     """High-speed decoder for Adobe Photoshop PSD and PSB files."""

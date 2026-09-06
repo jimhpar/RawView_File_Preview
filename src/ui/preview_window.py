@@ -136,12 +136,15 @@ class ImageCanvas(QLabel):
         if orig_w <= 0 or orig_h <= 0:
             return QSize(self.max_display_w, self.max_display_h)
 
+        # Scale image to fill available display area while preserving aspect ratio.
+        # Both small and large images are fitted (upscaled or downscaled) to maximize
+        # the preview area usage, eliminating excessive empty space around small images.
         aspect = orig_w / orig_h
         if (self.max_display_w / max(self.max_display_h, 1)) > aspect:
-            h = min(orig_h, self.max_display_h)
+            h = self.max_display_h
             w = int(h * aspect)
         else:
-            w = min(orig_w, self.max_display_w)
+            w = self.max_display_w
             h = int(w / aspect)
         return QSize(max(w, 100), max(h, 80))
 
