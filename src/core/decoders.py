@@ -231,25 +231,26 @@ class PsdDecoder:
 class AiDecoder:
     """
     High-speed, high-fidelity decoder for Adobe Illustrator AI files.
-    Extracts full workspace canvas (inside & outside artboard) at crystal-clear 1440px+ resolution.
+    Prioritizes vector rasterization (PyMuPDF/PDFium) for crisp, zoom-friendly previews.
+    Falls back to XMP embedded thumbnail only when no PDF compatibility stream exists.
     """
     @staticmethod
     def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
         size = os.path.getsize(file_path)
 
-        # 1. Check if elements exist outside the artboards by comparing BoundingBox and MediaBox
-        prefer_xmp = False
+        # 1. Detect whether elements exist outside the artboards (BoundingBox vs MediaBox)
+        has_overflow = False
         try:
-            bbox_w, bbox_h = 0, 0
             with open(file_path, "rb") as f:
                 header = f.read(1024 * 512).decode("latin-1", errors="ignore")
-            
+
+            bbox_w, bbox_h = 0, 0
             m = re.search(r"%%BoundingBox:\s*([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)", header)
             if m:
                 x0, y0, x1, y1 = map(float, m.groups())
                 bbox_w = max(int(x1) - int(x0), 0)
                 bbox_h = max(int(y1) - int(y0), 0)
-            
+
             media_w, media_h = 0, 0
             try:
                 doc = fitz.open(file_path)
@@ -258,28 +259,75 @@ class AiDecoder:
                     media_w, media_h = int(rect.width), int(rect.height)
             except Exception:
                 pass
-            
+
             if bbox_w * bbox_h > (media_w * media_h * 1.05):
-                prefer_xmp = True
+                has_overflow = True
         except Exception:
             pass
 
-        # If elements are outside the artboard, the PDF stream WILL clip them. 
-        # The ONLY way to see the full workspace is the XMP thumbnail.
-        if prefer_xmp:
-            qim = extract_xmp_image(file_path)
-            if qim and not qim.isNull():
+        # 2. PyMuPDF Vector Rasterizer — always try first for crisp, high-res output
+        #    This produces zoom-friendly images at 1440px+ resolution vs 256px XMP thumbnails.
+        try:
+            doc = fitz.open(file_path)
+            if len(doc) > 0:
+                page = doc[0]
+                rect = page.rect
+                page_w = max(int(rect.width), 10)
+                page_h = max(int(rect.height), 10)
+
+                # Render at high DPI for crisp zoom (up to 300 DPI)
+                dpi = int(min(max_size / max(page_w, page_h, 1) * 72, 300))
+                dpi = max(dpi, 72)
+                pix = page.get_pixmap(dpi=dpi)
+
+                if pix.width > 0 and pix.height > 0:
+                    data = pix.tobytes("png")
+                    qim = QImage.fromData(QByteArray(data))
+                    if not qim.isNull():
+                        mode_str = "RGB (Vector Artboard)"
+                        extra = f"Artboards: {len(doc)}"
+                        if has_overflow:
+                            extra += " (elements outside artboard clipped)"
+                        return PreviewResult(
+                            qimage=qim,
+                            width=page_w,
+                            height=page_h,
+                            mode=mode_str,
+                            format_name="AI",
+                            file_size=size,
+                            extra_info=extra
+                        )
+        except Exception:
+            pass
+
+        # 3. PDFium rasterizer (fallback vector engine)
+        try:
+            pdf = pdfium.PdfDocument(file_path)
+            if len(pdf) > 0:
+                page = pdf[0]
+                page_w = int(page.get_width())
+                page_h = int(page.get_height())
+                scale = min(max_size / max(page_w, page_h, 1), 3.0)
+                scale = max(scale, 1.0)
+
+                pil_img = page.render(scale=scale).to_pil()
+                qim = pil_to_qimage(pil_img)
+                extra = f"Artboards: {len(pdf)}"
+                if has_overflow:
+                    extra += " (elements outside artboard clipped)"
                 return PreviewResult(
                     qimage=qim,
-                    width=qim.width(),
-                    height=qim.height(),
-                    mode="RGB (Full Workspace)",
+                    width=page_w,
+                    height=page_h,
+                    mode="RGB (Vector Artboard)",
                     format_name="AI",
                     file_size=size,
-                    extra_info="Full Canvas Workspace"
+                    extra_info=extra
                 )
+        except Exception:
+            pass
 
-        # 2. Native Windows Shell Handler (Extracts complete workspace canvas & all artboards in ~40ms)
+        # 4. Native Windows Shell Handler (fallback for non-PDF AI files)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull():
             return PreviewResult(
@@ -292,69 +340,15 @@ class AiDecoder:
                 extra_info="Native Thumbnail"
             )
 
-        # 3. PyMuPDF Vector Rasterizer (High resolution vector rendering)
-        try:
-            doc = fitz.open(file_path)
-            if len(doc) > 0:
-                page = doc[0]
-                rect = page.rect
-                page_w = max(int(rect.width), 10)
-                page_h = max(int(rect.height), 10)
-                
-                # Render with high DPI (150 DPI ~ 2x scale)
-                dpi = int(min(max_size / max(page_w, page_h, 1) * 72, 300))
-                dpi = max(dpi, 72)
-                pix = page.get_pixmap(dpi=dpi)
-                
-                # Check if rendered page is non-empty
-                if pix.width > 0 and pix.height > 0:
-                    data = pix.tobytes("png")
-                    qim = QImage.fromData(QByteArray(data))
-                    if not qim.isNull():
-                        return PreviewResult(
-                            qimage=qim,
-                            width=page_w,
-                            height=page_h,
-                            mode="RGB (Vector Artboard)",
-                            format_name="AI",
-                            file_size=size,
-                            extra_info=f"Artboards: {len(doc)}"
-                        )
-        except Exception:
-            pass
-
-        # 4. PDFium rasterizer (Fallback vector engine)
-        try:
-            pdf = pdfium.PdfDocument(file_path)
-            if len(pdf) > 0:
-                page = pdf[0]
-                page_w = int(page.get_width())
-                page_h = int(page.get_height())
-                scale = min(max_size / max(page_w, page_h, 1), 3.0)
-                scale = max(scale, 1.0)
-                
-                pil_img = page.render(scale=scale).to_pil()
-                qim = pil_to_qimage(pil_img)
-                return PreviewResult(
-                    qimage=qim,
-                    width=page_w,
-                    height=page_h,
-                    mode="RGB (Vector Artboard)",
-                    format_name="AI",
-                    file_size=size,
-                    extra_info=f"Artboards: {len(pdf)}"
-                )
-        except Exception:
-            pass
-
-        # 5. Search for XMP embedded full workspace preview (<xmpGImg:image>) as last resort
+        # 5. XMP embedded thumbnail — last resort for AI files without PDF compatibility stream
+        #    These are typically small JPEG thumbnails (~256px) embedded by Illustrator.
         qim = extract_xmp_image(file_path)
         if qim and not qim.isNull():
             return PreviewResult(
                 qimage=qim,
                 width=qim.width(),
                 height=qim.height(),
-                mode="RGB (Workspace Thumbnail)",
+                mode="RGB (Full Workspace)",
                 format_name="AI",
                 file_size=size,
                 extra_info="Full Canvas Workspace"
