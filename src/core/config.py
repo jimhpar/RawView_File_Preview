@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v3.9.3"
+APP_VERSION = "v3.9.4"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.9.3"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.9.4"
 
 # Standard Web & Raster Images (Disabled by default in settings)
 STANDARD_IMAGE_EXTENSIONS = {

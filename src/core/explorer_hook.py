@@ -44,84 +44,106 @@ def detect_extensions_from_type_text(type_text: str) -> list[str]:
         return []
     t = type_text.lower()
     
-    # PDF
-    if "pdf" in t or "portable document" in t or "acrobat" in t:
-        return [".pdf"]
-    # PostScript / EPS
-    if "postscript" in t or "encapsulated" in t or "eps" in t:
-        return [".eps"]
+    # Extract after 'type:' or 'item type:' if present in tooltip
+    m = re.search(r"(?:item type|type)\s*:\s*([^\r\n]+)", t)
+    target_str = m.group(1).lower().strip() if m else t
+
     # Photoshop
-    if "photoshop" in t or "psd" in t or "psb" in t:
+    if "photoshop" in target_str or "psd" in target_str or "psb" in target_str:
         return [".psd", ".psb"]
     # Illustrator
-    if "illustrator" in t or "ai artwork" in t:
+    if "illustrator" in target_str or "ai artwork" in target_str or "ai file" in target_str:
         return [".ai", ".eps"]
-    # SVG
-    if "scalable vector" in t or "svg" in t:
-        return [".svg", ".svgz"]
-    # TIFF
-    if "tiff" in t or "tif" in t:
+    # InDesign
+    if "indesign" in target_str or "indd" in target_str or "indt" in target_str:
+        return [".indd", ".indt"]
+    # CorelDRAW
+    if "coreldraw" in target_str or "cdr" in target_str:
+        return [".cdr"]
+    # Standard Image Formats (JPG/JPEG, PNG, WebP, GIF, BMP, ICO, TIFF)
+    if "jpeg" in target_str or "jpg" in target_str or "jpe" in target_str:
+        return [".jpg", ".jpeg", ".jpe"]
+    if "png" in target_str or "portable network" in target_str:
+        return [".png"]
+    if "webp" in target_str:
+        return [".webp"]
+    if "gif" in target_str:
+        return [".gif"]
+    if "bmp" in target_str or "bitmap" in target_str or "dib" in target_str:
+        return [".bmp", ".dib"]
+    if "ico" in target_str or "icon" in target_str:
+        return [".ico"]
+    if "tiff" in target_str or "tif" in target_str:
         return [".tif", ".tiff"]
+    # PDF
+    if "pdf" in target_str or "portable document" in target_str or "acrobat" in target_str:
+        return [".pdf"]
+    # PostScript / EPS
+    if "postscript" in target_str or "encapsulated" in target_str or "eps" in target_str:
+        return [".eps"]
+    # SVG
+    if "scalable vector" in target_str or "svg" in target_str:
+        return [".svg", ".svgz"]
     # Camera RAW Formats
-    if "digital negative" in t or "dng" in t:
+    if "digital negative" in target_str or "dng" in target_str:
         return [".dng"]
-    if "canon" in t or "cr2" in t or "cr3" in t or "crw" in t:
+    if "canon" in target_str or "cr2" in target_str or "cr3" in target_str or "crw" in target_str:
         return [".cr2", ".cr3", ".crw"]
-    if "nikon" in t or "nef" in t or "nrw" in t:
+    if "nikon" in target_str or "nef" in target_str or "nrw" in target_str:
         return [".nef", ".nrw"]
-    if "sony" in t or "arw" in t or "srf" in t or "sr2" in t:
+    if "sony" in target_str or "arw" in target_str or "srf" in target_str or "sr2" in target_str:
         return [".arw", ".srf", ".sr2"]
-    if "fujifilm" in t or "raf" in t:
+    if "fujifilm" in target_str or "raf" in target_str:
         return [".raf"]
-    if "olympus" in t or "orf" in t:
+    if "olympus" in target_str or "orf" in target_str:
         return [".orf", ".ori"]
-    if "lumix" in t or "panasonic" in t or "rw2" in t:
+    if "lumix" in target_str or "panasonic" in target_str or "rw2" in target_str:
         return [".rw2"]
-    if "camera raw" in t or "raw image" in t:
+    if "camera raw" in target_str or "raw image" in target_str:
         return [".dng", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"]
 
     # Microsoft Word & RTF
-    if "word" in t or "docx" in t or "docm" in t or "dotx" in t or "doc " in t:
+    if "word" in target_str or "docx" in target_str or "docm" in target_str or "dotx" in target_str or "doc " in target_str:
         return [".docx", ".doc", ".docm", ".dotx", ".dot"]
-    if "rich text" in t or "rtf" in t:
+    if "rich text" in target_str or "rtf" in target_str:
         return [".rtf"]
 
     # Microsoft Excel & CSV
-    if "excel" in t or "spreadsheet" in t or "worksheet" in t or "xlsx" in t or "xlsm" in t or "xlsb" in t:
+    if "excel" in target_str or "spreadsheet" in target_str or "worksheet" in target_str or "xlsx" in target_str or "xlsm" in target_str or "xlsb" in target_str:
         return [".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx"]
-    if "comma separated" in t or "csv" in t:
+    if "comma separated" in target_str or "csv" in target_str:
         return [".csv"]
 
     # Microsoft PowerPoint
-    if "powerpoint" in t or "presentation" in t or "slide" in t or "pptx" in t or "pptm" in t or "ppsx" in t:
+    if "powerpoint" in target_str or "presentation" in target_str or "slide" in target_str or "pptx" in target_str or "pptm" in target_str or "ppsx" in target_str:
         return [".pptx", ".ppt", ".pptm", ".ppsx", ".potx"]
 
     # Adobe After Effects & Premiere Pro
-    if "after effects" in t or "aep" in t or "aet" in t:
+    if "after effects" in target_str or "aep" in target_str or "aet" in target_str:
         return [".aep", ".aet", ".aepx"]
-    if "premiere" in t or "prproj" in t or "prset" in t:
+    if "premiere" in target_str or "prproj" in target_str or "prset" in target_str:
         return [".prproj", ".prset"]
 
     # Video Formats
-    if "mp4" in t or "mpeg-4" in t:
+    if "mp4" in target_str or "mpeg-4" in target_str:
         return [".mp4", ".m4v"]
-    if "mkv" in t or "matroska" in t:
+    if "mkv" in target_str or "matroska" in target_str:
         return [".mkv"]
-    if "quicktime" in t or "mov" in t:
+    if "quicktime" in target_str or "mov" in target_str:
         return [".mov"]
-    if "avi" in t or "audio video interleave" in t:
+    if "avi" in target_str or "audio video interleave" in target_str:
         return [".avi"]
-    if "windows media" in t or "wmv" in t:
+    if "windows media" in target_str or "wmv" in target_str:
         return [".wmv"]
-    if "webm" in t:
+    if "webm" in target_str:
         return [".webm"]
-    if "flash video" in t or "flv" in t:
+    if "flash video" in target_str or "flv" in target_str:
         return [".flv"]
-    if "transport stream" in t or "ts video" in t:
+    if "transport stream" in target_str or "ts video" in target_str:
         return [".ts"]
-    if "3gp" in t or "3gpp" in t:
+    if "3gp" in target_str or "3gpp" in target_str:
         return [".3gp"]
-    if "video" in t or "movie" in t or "media file" in t or "clip" in t:
+    if "video" in target_str or "movie" in target_str or "media file" in target_str or "clip" in target_str:
         return [".mp4", ".mkv", ".mov", ".avi", ".webm", ".wmv", ".flv", ".ts", ".m4v", ".3gp"]
         
     return []
@@ -403,8 +425,8 @@ class ExplorerHoverMonitor(QObject):
             pass
         return active_folder, focused_paths, selected_paths, tab_folders
 
-    def _get_candidate_folders(self, priority_folder: str = "", tab_folders: list = None) -> list:
-        """Retrieves all active folder paths and FTP locations from Explorer windows, all open tabs, and Desktop."""
+    def _get_candidate_folders(self, priority_folder: str = "", tab_folders: list = None, is_explorer_window: bool = False, is_desktop: bool = False) -> list:
+        """Retrieves active folder paths scoped strictly to the hovered window/tab context."""
         folders = []
         if priority_folder and (priority_folder.startswith("ftp://") or priority_folder.startswith("ftps://") or os.path.isdir(priority_folder)):
             folders.append(priority_folder)
@@ -414,6 +436,18 @@ class ExplorerHoverMonitor(QObject):
                 if tf not in folders:
                     folders.append(tf)
 
+        # If hovering over Desktop, only search desktop locations
+        if is_desktop:
+            for dp in self.desktop_paths:
+                if dp not in folders and os.path.isdir(dp):
+                    folders.append(dp)
+            return folders
+
+        # If hovering inside an Explorer window and active tabs were found, restrict search ONLY to this window
+        if is_explorer_window and folders:
+            return folders
+
+        # Fallback only when window is unknown/undetermined
         try:
             pythoncom.CoInitialize()
             shell = win32com.client.Dispatch("Shell.Application")
@@ -480,7 +514,14 @@ class ExplorerHoverMonitor(QObject):
                     return None, None
                 row_control = elem
 
-            # Find parent list container name (e.g. "polo", "Pos_Dev", "Design", etc.)
+            # Identify window type
+            hwnd = win32gui.WindowFromPoint((x, y))
+            root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT) if hwnd else 0
+            cls_name = win32gui.GetClassName(root_hwnd) if root_hwnd else ""
+            is_explorer_window = (cls_name == "CabinetWClass")
+            is_desktop = (cls_name in ("Progman", "WorkerW"))
+
+            # Find parent list container name (e.g. "Downloads", "Space", etc.)
             folder_hint = ""
             p = row_control.GetParentControl()
             p_depth = 0
@@ -493,26 +534,35 @@ class ExplorerHoverMonitor(QObject):
 
             # 1. Query active Explorer COM context under cursor for this specific window and all its tabs
             priority_folder, focused_paths, selected_paths, tab_folders = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)
+            candidate_folders = self._get_candidate_folders(priority_folder, tab_folders, is_explorer_window=is_explorer_window, is_desktop=is_desktop)
 
-            # Extract Name & attributes strictly from the item row and its children
+            # 2. Extract Name & attributes strictly from the item row and its children
             names_to_try = []
             type_hints = []
             size_hints = []
 
-            if elem != row_control and elem.Name:
-                names_to_try.append(elem.Name)
-            if row_control.Name:
-                names_to_try.append(row_control.Name)
+            def is_valid_name(s: str) -> bool:
+                if not s or "\n" in s or "\r" in s:
+                    return False
+                lower = s.lower().strip()
+                if any(lower.startswith(k) for k in ("item type:", "type:", "size:", "date modified:", "dimensions:", "rating:")):
+                    return False
+                return True
+
+            if elem != row_control and is_valid_name(elem.Name):
+                names_to_try.append(elem.Name.strip())
+            if is_valid_name(row_control.Name):
+                names_to_try.append(row_control.Name.strip())
+
             row_help = getattr(row_control, 'HelpText', '')
             if row_help:
-                names_to_try.append(row_help)
                 type_hints.append(row_help)
                 size_hints.append(row_help)
             row_item_type = getattr(row_control, 'ItemType', '')
             if row_item_type:
                 type_hints.append(row_item_type)
 
-            # Inspect all child columns of this specific item row (Name, Type, Size)
+            # Inspect child columns
             try:
                 for child in row_control.GetChildren():
                     c_name = child.Name
@@ -521,11 +571,13 @@ class ExplorerHoverMonitor(QObject):
                     c_type = getattr(child, "ItemType", "")
 
                     if c_name:
-                        names_to_try.append(c_name)
-                        # Check if column is Type
-                        if any(k in c_name.lower() for k in ("document", "image", "file", "format", "postscript", "pdf", "artwork", "tiff", "raw")):
+                        if c_auto_id == "System.ItemNameDisplay" and is_valid_name(c_name):
+                            names_to_try.append(c_name.strip())
+                        elif is_valid_name(c_name) and not any(k in c_name.lower() for k in ("kb", "mb", "gb", "document", "image", "file", "format")):
+                            names_to_try.append(c_name.strip())
+
+                        if any(k in c_name.lower() for k in ("document", "image", "file", "format", "postscript", "pdf", "artwork", "tiff", "raw", "photoshop", "illustrator")):
                             type_hints.append(c_name)
-                        # Check if column is Size
                         if any(k in c_name.lower() for k in ("kb", "mb", "gb", "bytes", "b")) and re.search(r"\d", c_name):
                             size_hints.append(c_name)
                     
@@ -545,32 +597,30 @@ class ExplorerHoverMonitor(QObject):
             if not names_to_try:
                 return None, None
 
-            # 3. Match against COM focused/selected items from all open tabs
-            all_com_cands = focused_paths + selected_paths
-            for com_path in all_com_cands:
-                if com_path and os.path.isfile(com_path):
-                    com_ext = Path(com_path).suffix.lower()
-                    if com_ext in self.supported_exts_set:
-                        com_stem = Path(com_path).stem.lower()
-                        com_name = Path(com_path).name.lower()
-                        for raw_name in names_to_try:
-                            clean_n = raw_name.strip().lower()
-                            if clean_n in (com_stem, com_name) or normalize_str(clean_n) in (normalize_str(com_stem), normalize_str(com_name)):
-                                return com_path, bounding_box
+            # 3. Explicit File Extension Check:
+            # If the item name already has an explicit extension (e.g. "Kids.jpg", "Archive.zip"),
+            # and that extension is NOT enabled in settings, immediately abort! Never guess other extensions!
+            for raw_n in names_to_try:
+                n_ext = Path(raw_n).suffix.lower()
+                if n_ext and len(n_ext) in range(2, 7) and not n_ext[1:].isdigit():
+                    if n_ext not in self.supported_exts_set:
+                        return None, None
 
-            # 4. Resolve candidate folders across all active tabs, windows, and desktop
-            candidate_folders = self._get_candidate_folders(priority_folder, tab_folders)
-
-            # Determine target extensions from Type hints
-            target_exts = []
+            # 4. Type Hint Detection & Strict Abort for Disabled Formats:
+            inferred_exts = []
             for th in type_hints:
-                inferred = detect_extensions_from_type_text(th)
-                for e in inferred:
-                    if e in self.supported_exts_set and e not in target_exts:
-                        target_exts.append(e)
+                for e in detect_extensions_from_type_text(th):
+                    if e not in inferred_exts:
+                        inferred_exts.append(e)
 
-            # Build search order: type-matched extensions FIRST, then others
-            search_ext_order = target_exts + [e for e in self.supported_exts if e not in target_exts]
+            target_exts = []
+            if inferred_exts:
+                supported_inferred = [e for e in inferred_exts if e in self.supported_exts_set]
+                if not supported_inferred:
+                    # Item is definitely of a disabled or unsupported format (e.g. JPG when basic images is disabled).
+                    # Do NOT fall back to guessing .psd or other formats!
+                    return None, None
+                target_exts = supported_inferred
 
             # Parse size hint if available
             parsed_kb = None
@@ -580,18 +630,29 @@ class ExplorerHoverMonitor(QObject):
                     parsed_kb = val
                     break
 
-            # 5. Collect matching candidate files across folders
-            candidates = []
+            # 5. Check COM focused/selected items strictly within candidate folders
+            all_com_cands = focused_paths + selected_paths
+            for com_path in all_com_cands:
+                if com_path and os.path.isfile(com_path):
+                    # Ensure COM item actually belongs to the hovered folder/tabs
+                    if not any(Path(com_path).parent == Path(cf) for cf in candidate_folders):
+                        continue
+                    com_ext = Path(com_path).suffix.lower()
+                    if com_ext in self.supported_exts_set:
+                        if target_exts and com_ext not in target_exts:
+                            continue
+                        com_stem = Path(com_path).stem.lower()
+                        com_name = Path(com_path).name.lower()
+                        for raw_name in names_to_try:
+                            clean_n = raw_name.strip().lower()
+                            if clean_n in (com_stem, com_name) or normalize_str(clean_n) in (normalize_str(com_stem), normalize_str(com_name)):
+                                return com_path, bounding_box
+
+            # 6. Search candidate folders with Stem Collision Disambiguation
             for raw_name in names_to_try:
                 clean_name = " ".join(raw_name.split())
                 if not clean_name:
                     continue
-
-                # Direct absolute path check
-                if os.path.isabs(clean_name) and os.path.isfile(clean_name):
-                    if Path(clean_name).suffix.lower() in self.supported_exts_set:
-                        return clean_name, bounding_box
-
                 norm_name = normalize_str(clean_name)
 
                 for folder in candidate_folders:
@@ -600,80 +661,89 @@ class ExplorerHoverMonitor(QObject):
                         ext = Path(clean_name).suffix.lower()
                         if ext in self.supported_exts_set:
                             return f"{folder.rstrip('/')}/{clean_name}", bounding_box
-                        for e in search_ext_order:
+                        search_order = target_exts if target_exts else self.supported_exts
+                        for e in search_order:
                             return f"{folder.rstrip('/')}/{clean_name}{e}", bounding_box
                         continue
 
                     if not os.path.isdir(folder):
                         continue
 
-                    # If name already has a supported extension
+                    # Direct match if clean_name already includes a supported extension
                     ext = Path(clean_name).suffix.lower()
                     if ext in self.supported_exts_set:
                         direct_p = os.path.join(folder, clean_name)
                         if os.path.isfile(direct_p):
                             return direct_p, bounding_box
 
-                    # Try extensions in search_ext_order
-                    for e in search_ext_order:
-                        cand = os.path.join(folder, f"{clean_name}{e}")
-                        if os.path.isfile(cand) and cand not in candidates:
-                            candidates.append(cand)
-
-                    # Direct join without extension (e.g. if clean_name contains extension)
-                    direct = os.path.join(folder, clean_name)
-                    if os.path.isfile(direct) and Path(direct).suffix.lower() in self.supported_exts_set and direct not in candidates:
-                        candidates.append(direct)
-
-                    # Normalized match against directory files
+                    # Find ALL files on disk in this folder matching this stem
+                    matching_disk_files = []
                     try:
                         for f in os.listdir(folder):
-                            base, f_ext = os.path.splitext(f)
-                            if f_ext.lower() in self.supported_exts_set:
-                                if normalize_str(base) == norm_name or normalize_str(f) == norm_name:
-                                    f_cand = os.path.join(folder, f)
-                                    if f_cand not in candidates:
-                                        candidates.append(f_cand)
+                            f_path = os.path.join(folder, f)
+                            if os.path.isfile(f_path):
+                                f_stem = Path(f).stem
+                                if f_stem.lower() == clean_name.lower() or normalize_str(f_stem) == norm_name or f.lower() == clean_name.lower():
+                                    matching_disk_files.append(f_path)
                     except Exception:
                         continue
 
-            if not candidates:
-                return None, None
-
-            # If only 1 candidate found, return immediately
-            if len(candidates) == 1:
-                return candidates[0], bounding_box
-
-            # Disambiguation with Type hints
-            if target_exts:
-                for c in candidates:
-                    if Path(c).suffix.lower() in target_exts:
-                        if parsed_kb is not None:
-                            try:
-                                actual_kb = os.path.getsize(c) / 1024.0
-                                if abs(actual_kb - parsed_kb) / max(parsed_kb, 1.0) < 0.25 or abs(actual_kb - parsed_kb) < 120:
-                                    return c, bounding_box
-                            except Exception:
-                                pass
-                        return c, bounding_box
-
-            # Disambiguation with Size hint
-            if parsed_kb is not None:
-                best_cand = None
-                best_diff = float('inf')
-                for c in candidates:
-                    try:
-                        actual_kb = os.path.getsize(c) / 1024.0
-                        diff = abs(actual_kb - parsed_kb)
-                        if diff < best_diff:
-                            best_diff = diff
-                            best_cand = c
-                    except Exception:
+                    if not matching_disk_files:
                         continue
-                if best_cand and best_diff < max(parsed_kb * 0.35, 200):
-                    return best_cand, bounding_box
 
-            return candidates[0], bounding_box
+                    # CASE 1: Exactly one file on disk matches this name
+                    if len(matching_disk_files) == 1:
+                        single_p = matching_disk_files[0]
+                        single_ext = Path(single_p).suffix.lower()
+                        if single_ext in self.supported_exts_set:
+                            return single_p, bounding_box
+                        else:
+                            # The file exists in the active folder, but its format is disabled/unsupported.
+                            # Never search other folders!
+                            return None, None
+
+                    # CASE 2: Multiple files on disk match this base name (Stem Collision e.g. .psd and .jpg)
+                    # A. Type hint disambiguation
+                    if target_exts:
+                        type_matched = [p for p in matching_disk_files if Path(p).suffix.lower() in target_exts]
+                        if type_matched:
+                            if len(type_matched) == 1:
+                                return type_matched[0], bounding_box
+                            if parsed_kb is not None:
+                                best = min(type_matched, key=lambda p: abs(os.path.getsize(p)/1024.0 - parsed_kb))
+                                return best, bounding_box
+                            return type_matched[0], bounding_box
+
+                    # B. Size hint disambiguation
+                    if parsed_kb is not None:
+                        best_p = min(matching_disk_files, key=lambda p: abs(os.path.getsize(p)/1024.0 - parsed_kb))
+                        best_diff = abs(os.path.getsize(best_p)/1024.0 - parsed_kb)
+                        if best_diff < max(parsed_kb * 0.40, 250):
+                            if Path(best_p).suffix.lower() in self.supported_exts_set:
+                                return best_p, bounding_box
+                            else:
+                                # The hovered item matches a disabled file (e.g. 203 KB JPG instead of 93 MB PSD)
+                                return None, None
+
+                    # C. COM Focused / Selected item match
+                    com_matches = [p for p in matching_disk_files if p in all_com_cands]
+                    if com_matches:
+                        com_p = com_matches[0]
+                        if Path(com_p).suffix.lower() in self.supported_exts_set:
+                            return com_p, bounding_box
+                        else:
+                            return None, None
+
+                    # D. If still ambiguous and some files are unsupported/disabled:
+                    # NEVER blindly return a supported file if an unsupported file also shares the stem!
+                    has_unsupported = any(Path(p).suffix.lower() not in self.supported_exts_set for p in matching_disk_files)
+                    if has_unsupported:
+                        return None, None
+
+                    # If all matching files are supported, pick the first
+                    supported_only = [p for p in matching_disk_files if Path(p).suffix.lower() in self.supported_exts_set]
+                    if supported_only:
+                        return supported_only[0], bounding_box
 
         except Exception:
             pass

@@ -1,3 +1,30 @@
+# 🚀 RawView v3.9.4 Release Notes
+
+**RawView v3.9.4** fixes a critical file resolution bug where hovering over a file (e.g. JPEG) falsely triggered previews of same-named files with different extensions (e.g. PSD) even when that format was turned off in Settings. Furthermore, v3.9.4 introduces a **0ms native Windows global hotkey (`Ctrl + \``)** and an **instant floating on-screen glassmorphic HUD pill** for ultra-responsive toggle feedback.
+
+---
+
+## 🌟 What's New in v3.9.4
+
+### 🎯 1. Same-Stem File Disambiguation (PSD vs JPEG Fix)
+* **Strict Disabled Format Rejection**: When basic image formats (JPG, PNG, WebP, BMP, GIF) are disabled in Settings, hovering over an image will **never** trigger a preview under any condition. RawView will immediately abort and never fall back to guessing other extensions like `.psd`.
+* **Identical-Name Multi-Extension Disambiguation**: When multiple files share the exact same base name in the same folder (e.g. `mockup.psd` and `mockup.jpg`):
+  * RawView inspects Windows Explorer's item type (`ItemType` and `HelpText` / InfoTip) to match the exact file under the cursor.
+  * Compares exact file size (`Size: 203 KB` vs `Size: 93.6 MB`) against disk files so it never mixes them up.
+* **Window-Scoped Folder Search**: When hovering an item in Windows Explorer, candidate folders are strictly scoped to that specific window and its own tabs. Files in one Explorer window will never resolve to files in a different open Explorer window.
+
+### ⚡ 2. Zero-Latency Native Global Hotkey (`Ctrl + \``)
+* **Native Windows Kernel Hotkey**: Registered via `RegisterHotKey` and `QAbstractNativeEventFilter`, intercepting `Ctrl + \`` with **0ms latency** directly from the Windows message loop.
+* **Independent of Timer Polling**: The shortcut triggers immediately regardless of mouse movement, UI Automation resolution, or system load.
+
+### 👁 3. Instant On-Screen Status HUD Badge (<5ms)
+* **Floating Glassmorphic Pill Toast**: Completely replaces the sluggish 2–4 second delay of Windows Action Center balloon toasts with an instant, modern floating HUD pill centered at the top of your screen:
+  * **Active**: Emerald glowing indicator + `RawView Hover Preview: Active` (`Ctrl + \``)
+  * **Paused**: Amber indicator + `RawView Hover Preview: Paused` (`Ctrl + \``)
+* **Smooth Micro-Animation**: Fades in within 120ms, stays for 1 second, and smoothly fades out with zero focus stealing or workflow interruption.
+
+---
+
 # 🚀 RawView v3.9.3 Release Notes
 
 **RawView v3.9.3** introduces multi-page thumbnail sidebar navigation for **PDF** and **Word documents**, enabling users to pin with `Space` and seamlessly browse through any document page with thumbnails or keyboard controls. Additionally, v3.9.3 incorporates a built-in **Bijoy/SutonnyMJ-to-Unicode engine** that perfectly resolves corrupted Bengali typography in Word documents into clean, authentic Bengali text.

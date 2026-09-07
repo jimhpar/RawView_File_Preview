@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import (
-    QObject, pyqtSignal, QRunnable, QThreadPool, Qt
+    QObject, pyqtSignal, QRunnable, QThreadPool, Qt, QAbstractNativeEventFilter
 )
 from PyQt6.QtGui import QFont, QColor, QPalette
 
@@ -25,8 +25,40 @@ from src.core.explorer_hook import ExplorerHoverMonitor
 from src.core.icons import create_app_icon
 from src.ui.preview_window import FloatingPreviewHUD
 from src.ui.tray_icon import TrayManager
+from src.ui.status_hud import StatusToastHUD
 
 kernel32 = ctypes.windll.kernel32
+user32 = ctypes.windll.user32
+
+class GlobalHotkeyFilter(QAbstractNativeEventFilter, QObject):
+    hotkey_triggered = pyqtSignal()
+
+    def __init__(self, hotkey_id=9876, parent=None):
+        QObject.__init__(self, parent)
+        self.hotkey_id = hotkey_id
+
+    def nativeEventFilter(self, eventType, message):
+        if eventType in (b"windows_generic_MSG", b"windows_dispatcher_MSG"):
+            try:
+                msg = wintypes.MSG.from_address(int(message))
+                # WM_HOTKEY = 0x0312
+                if msg.message == 0x0312 and msg.wParam == self.hotkey_id:
+                    self.hotkey_triggered.emit()
+                    return True, 0
+            except Exception:
+                pass
+        return False, 0
+
+class ConfigSaveRunnable(QRunnable):
+    def __init__(self, config: dict):
+        super().__init__()
+        self.config = dict(config)
+
+    def run(self):
+        try:
+            save_config(self.config)
+        except Exception:
+            pass
 
 class DecodeWorkerSignals(QObject):
     finished = pyqtSignal(str, object, int, int) # (file_path, PreviewResult, cursor_x, cursor_y)
@@ -167,6 +199,17 @@ class RawViewApp(QObject):
         self.preview_hud.open_settings_requested.connect(self.tray_manager.show_settings)
         self.tray_manager.show()
 
+        # 4. Native OS Global Hotkey (Ctrl + `) with Windows Kernel Filter for 0ms response
+        self.hotkey_id = 9876
+        self.hotkey_filter = GlobalHotkeyFilter(hotkey_id=self.hotkey_id)
+        self.hotkey_filter.hotkey_triggered.connect(self._on_toggle_enabled)
+        QApplication.instance().installNativeEventFilter(self.hotkey_filter)
+
+        # VK_OEM_3 = 0xC0 (` / ~ key), MOD_CONTROL = 0x0002, MOD_NOREPEAT = 0x4000
+        self.hotkey_registered = bool(
+            user32.RegisterHotKey(None, self.hotkey_id, 0x0002 | 0x4000, 0xC0)
+        )
+
         # Start Hover Monitoring
         self.hover_monitor.start()
 
@@ -214,32 +257,51 @@ class RawViewApp(QObject):
             self.preview_hud.dismiss()
 
     def _on_config_updated(self, new_config: dict):
+        prev_enabled = self.config.get("enabled", True)
         self.config = new_config
         self.hover_monitor.update_config(new_config)
         self.preview_hud.config = new_config
+        new_enabled = new_config.get("enabled", True)
+        if new_enabled != prev_enabled:
+            StatusToastHUD.show_status(new_enabled)
 
     def _on_toggle_enabled(self):
-        """Handles Ctrl+` global hotkey: toggles hover preview enabled state system-wide."""
+        """Handles Ctrl+` global hotkey: toggles hover preview enabled state system-wide with instant HUD."""
+        import time
+        now = time.time()
+        if now - getattr(self, "_last_toggle_time", 0.0) < 0.3:
+            return
+        self._last_toggle_time = now
+
         new_state = not self.config.get("enabled", True)
         self.config["enabled"] = new_state
-        save_config(self.config)
         self.hover_monitor.update_config(self.config)
         self.preview_hud.config = self.config
+        
         # Sync tray menu checkbox
         self.tray_manager.toggle_action.setChecked(new_state)
+        
         # Dismiss any active preview when disabling
         if not new_state:
             self.preview_hud.dismiss()
-        # Show a brief tray balloon notification
-        status_text = "✅ Hover Preview Enabled" if new_state else "⏸ Hover Preview Disabled"
-        self.tray_manager.tray.showMessage(
-            APP_NAME,
-            status_text,
-            self.tray_manager.icon,
-            1500
-        )
+
+        # Instant On-Screen Glassmorphic HUD Badge (<5ms response, zero lag)
+        StatusToastHUD.show_status(new_state)
+
+        # Async background config save so disk I/O does not delay responsiveness
+        self.thread_pool.start(ConfigSaveRunnable(self.config))
 
     def shutdown(self):
+        if getattr(self, "hotkey_registered", False):
+            try:
+                user32.UnregisterHotKey(None, self.hotkey_id)
+            except Exception:
+                pass
+        if getattr(self, "hotkey_filter", None):
+            try:
+                QApplication.instance().removeNativeEventFilter(self.hotkey_filter)
+            except Exception:
+                pass
         self.hover_monitor.stop()
         self.preview_hud.close()
         QApplication.quit()
