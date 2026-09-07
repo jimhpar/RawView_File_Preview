@@ -3,11 +3,10 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QCheckBox,
     QPushButton, QGroupBox, QGridLayout, QMessageBox, QScrollArea, QWidget,
-    QLineEdit, QApplication
+    QLineEdit, QApplication, QTabWidget, QFrame
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QColor, QPalette, QDesktopServices
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl
+from PyQt6.QtGui import QIcon, QColor, QPalette, QDesktopServices
 from src.core.config import (
     save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION, PAYMENT_INFO
 )
@@ -15,47 +14,79 @@ from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import get_license_status, activate_license, get_machine_id
 
 class SettingsDialog(QDialog):
-    """Modern dark-themed preferences dialog for RawView v3.1.5."""
+    """Modern dark-themed tabbed preferences dialog for RawView v3.9.1."""
     config_changed = pyqtSignal(dict)
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self.config = config.copy()
-        self.setWindowTitle(f"{APP_NAME} {APP_VERSION} - Settings")
-        self.setFixedSize(580, 780)
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION} - Settings & Controls")
+        self.setFixedSize(620, 780)
         self._init_style()
         self._init_ui()
 
     def _init_style(self):
-        self.setStyleSheet("""
-            QDialog {
+        assets_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+        checkmark_svg = (assets_dir / "checkmark.svg").as_posix()
+
+        self.setStyleSheet(f"""
+            QDialog {{
                 background-color: #0B0E17;
                 color: #E2E8F0;
                 font-family: 'Segoe UI', sans-serif;
-            }
-            QScrollArea {
+            }}
+            QTabWidget::pane {{
+                border: 1px solid #1E293B;
+                border-radius: 8px;
+                background-color: #0B0E17;
+                top: -1px;
+            }}
+            QTabBar::tab {{
+                background-color: #111625;
+                color: #94A3B8;
+                border: 1px solid #1E293B;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 9px 20px;
+                margin-right: 4px;
+                font-weight: 600;
+                font-size: 12px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: #0B0E17;
+                color: #38BDF8;
+                border-color: #38BDF8;
+                border-bottom: 2px solid #0B0E17;
+                font-weight: 700;
+            }}
+            QTabBar::tab:hover:!selected {{
+                background-color: #1E293B;
+                color: #E2E8F0;
+            }}
+            QScrollArea {{
                 background: transparent;
                 border: none;
-            }
-            QScrollBar:vertical {
+            }}
+            QScrollBar:vertical {{
                 border: none;
                 background: #0B0E17;
                 width: 8px;
                 margin: 0px 0px 0px 0px;
                 border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
+            }}
+            QScrollBar::handle:vertical {{
                 background: #334155;
                 min-height: 20px;
                 border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
+            }}
+            QScrollBar::handle:vertical:hover {{
                 background: #475569;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
-            }
-            QGroupBox {
+            }}
+            QGroupBox {{
                 border: 1px solid #1E293B;
                 border-radius: 10px;
                 margin-top: 14px;
@@ -64,64 +95,69 @@ class SettingsDialog(QDialog):
                 font-size: 12px;
                 color: #38BDF8;
                 background-color: #111625;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 14px;
                 padding: 0 6px;
-            }
-            QLabel {
+            }}
+            QLabel {{
                 font-size: 12px;
                 color: #CBD5E1;
-            }
-            QLineEdit {
+            }}
+            QLineEdit {{
                 background-color: #0F172A;
                 border: 1px solid #334155;
                 border-radius: 6px;
                 color: #F8FAFC;
                 padding: 6px 10px;
                 font-size: 12px;
-            }
-            QLineEdit:focus {
+            }}
+            QLineEdit:focus {{
                 border-color: #38BDF8;
-            }
-            QCheckBox {
+            }}
+            QCheckBox {{
                 font-size: 12px;
                 color: #E2E8F0;
                 spacing: 8px;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
                 border: 1px solid #475569;
                 border-radius: 4px;
                 background-color: #1E293B;
-            }
-            QCheckBox::indicator:hover {
+            }}
+            QCheckBox::indicator:hover {{
                 border-color: #38BDF8;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #38BDF8;
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: #0284C7;
                 border-color: #38BDF8;
-            }
-            QSlider::groove:horizontal {
+                image: url({checkmark_svg});
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background-color: #0369A1;
+                border-color: #38BDF8;
+            }}
+            QSlider::groove:horizontal {{
                 height: 6px;
                 background: #1E293B;
                 border-radius: 3px;
-            }
-            QSlider::sub-page:horizontal {
+            }}
+            QSlider::sub-page:horizontal {{
                 background: #38BDF8;
                 border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
+            }}
+            QSlider::handle:horizontal {{
                 background: #FFFFFF;
                 border: 2px solid #38BDF8;
                 width: 16px;
                 margin-top: -5px;
                 margin-bottom: -5px;
                 border-radius: 8px;
-            }
-            QPushButton {
+            }}
+            QPushButton {{
                 background-color: #1E293B;
                 color: #F8FAFC;
                 border: 1px solid #334155;
@@ -129,46 +165,46 @@ class SettingsDialog(QDialog):
                 padding: 7px 14px;
                 font-size: 12px;
                 font-weight: 600;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #334155;
                 border-color: #64748B;
-            }
-            QPushButton#saveBtn {
+            }}
+            QPushButton#saveBtn {{
                 background-color: #0284C7;
                 border: 1px solid #38BDF8;
                 color: #FFFFFF;
-            }
-            QPushButton#saveBtn:hover {
+            }}
+            QPushButton#saveBtn:hover {{
                 background-color: #0369A1;
-            }
-            QPushButton#activateBtn {
+            }}
+            QPushButton#activateBtn {{
                 background-color: #059669;
                 border: 1px solid #10B981;
                 color: #FFFFFF;
                 font-weight: 700;
-            }
-            QPushButton#activateBtn:hover {
+            }}
+            QPushButton#activateBtn:hover {{
                 background-color: #047857;
-            }
-            QPushButton#copyBkashBtn {
+            }}
+            QPushButton#copyBkashBtn {{
                 background-color: #E11D48;
                 border: 1px solid #F43F5E;
                 color: #FFFFFF;
                 font-weight: 600;
-            }
-            QPushButton#copyBkashBtn:hover {
+            }}
+            QPushButton#copyBkashBtn:hover {{
                 background-color: #BE123C;
-            }
-            QPushButton#waBtn {
+            }}
+            QPushButton#waBtn {{
                 background-color: #059669;
                 border: 1px solid #34D399;
                 color: #FFFFFF;
                 font-weight: 600;
-            }
-            QPushButton#waBtn:hover {
+            }}
+            QPushButton#waBtn:hover {{
                 background-color: #047857;
-            }
+            }}
         """)
 
     def _init_ui(self):
@@ -176,15 +212,45 @@ class SettingsDialog(QDialog):
         root_layout.setContentsMargins(14, 14, 14, 14)
         root_layout.setSpacing(10)
 
-        # Scroll Area for spacious settings content
-        scroll = QScrollArea(self)
+        # Tab Widget Header
+        self.tabs = QTabWidget(self)
+
+        # Tab 1: Preferences
+        pref_tab = self._create_preferences_tab()
+        self.tabs.addTab(pref_tab, "⚙️ Preferences")
+
+        # Tab 2: Shortcuts & Controls (using && so & is not consumed as mnemonic)
+        shortcuts_tab = self._create_shortcuts_tab()
+        self.tabs.addTab(shortcuts_tab, "⌨️ Shortcuts && Controls")
+
+        root_layout.addWidget(self.tabs, stretch=1)
+
+        # Action Buttons pinned at bottom
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(4, 4, 4, 0)
+        btn_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel", self)
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Save && Apply", self)
+        save_btn.setObjectName("saveBtn")
+        save_btn.clicked.connect(self._save_and_apply)
+        btn_layout.addWidget(save_btn)
+
+        root_layout.addLayout(btn_layout)
+
+    def _create_preferences_tab(self) -> QWidget:
+        """Constructs the scrollable preferences and configuration tab."""
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
 
         scroll_widget = QWidget()
         scroll_widget.setStyleSheet("background: transparent;")
         main_layout = QVBoxLayout(scroll_widget)
-        main_layout.setContentsMargins(4, 2, 10, 6)
+        main_layout.setContentsMargins(4, 6, 12, 6)
         main_layout.setSpacing(12)
 
         # 1. Pro License & Activation Section
@@ -318,7 +384,7 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(perf_group)
 
         # 4. Graphics & Vector Formats
-        gfx_group = QGroupBox("Graphics & Design Formats", self)
+        gfx_group = QGroupBox("Graphics && Design Formats", self)
         gfx_layout = QGridLayout(gfx_group)
         gfx_layout.setContentsMargins(14, 12, 14, 10)
         gfx_layout.setHorizontalSpacing(20)
@@ -349,7 +415,7 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(gfx_group)
 
         # 5. Microsoft Office & Documents
-        office_group = QGroupBox("Microsoft Office & Documents", self)
+        office_group = QGroupBox("Microsoft Office && Documents", self)
         office_layout = QGridLayout(office_group)
         office_layout.setContentsMargins(14, 12, 14, 10)
         office_layout.setHorizontalSpacing(20)
@@ -359,7 +425,7 @@ class SettingsDialog(QDialog):
             (".docx", "Word (.docx, .doc)"),
             (".xlsx", "Excel (.xlsx, .xls)"),
             (".pptx", "PowerPoint (.pptx, .ppt)"),
-            (".rtf",  "Rich Text & CSV (.rtf, .csv)"),
+            (".rtf",  "Rich Text && CSV (.rtf, .csv)"),
         ]
 
         for idx, (ext, label) in enumerate(office_items):
@@ -373,7 +439,7 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(office_group)
 
         # 6. Adobe Video & Motion Projects
-        adobe_group = QGroupBox("Adobe Video & Motion Projects", self)
+        adobe_group = QGroupBox("Adobe Video && Motion Projects", self)
         adobe_layout = QGridLayout(adobe_group)
         adobe_layout.setContentsMargins(14, 12, 14, 10)
         adobe_layout.setHorizontalSpacing(20)
@@ -422,8 +488,34 @@ class SettingsDialog(QDialog):
 
         main_layout.addWidget(vid_group)
 
-        # 6. Cache Management
-        cache_group = QGroupBox("Cache & Storage", self)
+        # 8. Standard & Web Images (Disabled by default)
+        std_group = QGroupBox("Standard && Web Images (Off by default - Check to enable)", self)
+        std_layout = QGridLayout(std_group)
+        std_layout.setContentsMargins(14, 12, 14, 10)
+        std_layout.setHorizontalSpacing(20)
+        std_layout.setVerticalSpacing(6)
+
+        std_items = [
+            (".jpg", "JPEG / JPG (.jpg, .jpeg)"),
+            (".png", "PNG (Portable Network Graphics)"),
+            (".webp", "WebP (Google Web Image)"),
+            (".gif", "GIF (Interchange / Animation)"),
+            (".ico", "ICO (Windows Icon Format)"),
+            (".bmp", "BMP (Standard Windows Bitmap)"),
+        ]
+
+        for idx, (ext, label) in enumerate(std_items):
+            cb = QCheckBox(label, self)
+            cb.setChecked(ext in active_fmts)
+            self.format_cbs[ext] = cb
+            row = idx // 2
+            col = idx % 2
+            std_layout.addWidget(cb, row, col)
+
+        main_layout.addWidget(std_group)
+
+        # 9. Cache Management
+        cache_group = QGroupBox("Cache && Storage", self)
         cache_layout = QHBoxLayout(cache_group)
         cache_layout.setContentsMargins(14, 10, 14, 10)
 
@@ -439,23 +531,166 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(cache_group)
 
         scroll.setWidget(scroll_widget)
-        root_layout.addWidget(scroll, stretch=1)
+        return scroll
 
-        # Action Buttons pinned at bottom
-        btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(4, 4, 4, 0)
-        btn_layout.addStretch()
+    def _create_shortcuts_tab(self) -> QWidget:
+        """Constructs the visual reference guide explaining all shortcuts and controls."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
 
-        cancel_btn = QPushButton("Cancel", self)
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
+        scroll_widget = QWidget()
+        scroll_widget.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(scroll_widget)
+        layout.setContentsMargins(6, 10, 14, 10)
+        layout.setSpacing(10)
 
-        save_btn = QPushButton("Save & Apply", self)
-        save_btn.setObjectName("saveBtn")
-        save_btn.clicked.connect(self._save_and_apply)
-        btn_layout.addWidget(save_btn)
+        # Top Banner
+        tip_frame = QFrame()
+        tip_frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(56, 189, 248, 0.08);
+                border: 1px solid rgba(56, 189, 248, 0.25);
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        tip_layout = QHBoxLayout(tip_frame)
+        tip_layout.setContentsMargins(8, 4, 8, 4)
+        tip_lbl = QLabel(
+            "<b>💡 Pro Tip:</b> Press <b>Space</b> while hovering over any file to pin the preview window! "
+            "Once pinned, you can freely zoom, pan, or copy artwork without the window closing."
+        )
+        tip_lbl.setWordWrap(True)
+        tip_lbl.setStyleSheet("color: #38BDF8; font-size: 12px;")
+        tip_layout.addWidget(tip_lbl)
+        layout.addWidget(tip_frame)
 
-        root_layout.addLayout(btn_layout)
+        # 9 Interactive Shortcuts & Controls
+        shortcuts_data = [
+            (
+                "Ctrl + `",
+                "Toggle Preview Service",
+                "System-wide global hotkey to turn RawView hover previews <b>On or Off</b> anywhere in Windows without opening settings.",
+                "System Hotkey"
+            ),
+            (
+                "Space",
+                "Pin Preview / Play & Pause Video",
+                "<b>Image / Doc:</b> Freezes and pins the floating window on screen so you can interact with it.<br><b>Video:</b> Instantly plays or pauses live looping video footage.",
+                "Primary Control"
+            ),
+            (
+                "Mouse Wheel (Scroll)",
+                "Zoom In & Zoom Out",
+                "Smoothly scale images, vectors, and documents from <b>50% up to 800%</b>. Rasterized from high-definition master buffer with zero pixelation.",
+                "Canvas Viewport"
+            ),
+            (
+                "Left-Click + Drag",
+                "Pan Across Zoomed Canvas",
+                "Click and drag anywhere on the canvas while zoomed in to freely explore details and inspect artwork.",
+                "Canvas Viewport"
+            ),
+            (
+                "Double-Click",
+                "Reset Zoom & Position",
+                "Instantly resets zoom factor back to <b>100% default fit</b> and centers the image in the preview window.",
+                "Canvas Viewport"
+            ),
+            (
+                "Ctrl + C",
+                "Copy Preview to Clipboard",
+                "Copies the full-resolution preview image straight to your Windows clipboard. Paste directly into Photoshop, Illustrator, Word, or chat!",
+                "Quick Export"
+            ),
+            (
+                "Ctrl + O  or  Enter",
+                "Open in Default App",
+                "Instantly launches the previewed file in its default registered Windows application (e.g. Adobe Suite, Office, VLC) and dismisses the preview.",
+                "Launch"
+            ),
+            (
+                "Esc",
+                "Close / Dismiss Preview",
+                "Immediately closes and hides the floating preview window and resets viewport state.",
+                "Dismiss"
+            ),
+            (
+                "Mouse Hover Away",
+                "Auto-Dismiss on Exit",
+                "When unpinned, moving your mouse cursor off the file item in File Explorer or Desktop automatically hides the preview with zero lag.",
+                "Natural Flow"
+            ),
+        ]
+
+        for keys, title, desc, tag in shortcuts_data:
+            card = self._create_shortcut_card(keys, title, desc, tag)
+            layout.addWidget(card)
+
+        layout.addStretch()
+        scroll.setWidget(scroll_widget)
+        return scroll
+
+    def _create_shortcut_card(self, key_text: str, title: str, description: str, tag: str = "") -> QFrame:
+        card = QFrame()
+        card.setStyleSheet("""
+            QFrame {
+                background-color: #111625;
+                border: 1px solid #1E293B;
+                border-radius: 8px;
+            }
+            QFrame:hover {
+                border-color: #38BDF8;
+                background-color: #151C2E;
+            }
+        """)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 9, 12, 9)
+        layout.setSpacing(5)
+
+        header = QHBoxLayout()
+        header.setSpacing(8)
+
+        key_badge = QLabel(key_text)
+        key_badge.setStyleSheet("""
+            background-color: #1E293B;
+            color: #38BDF8;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid #334155;
+        """)
+        header.addWidget(key_badge)
+
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet("color: #F8FAFC; font-weight: 700; font-size: 13px;")
+        header.addWidget(title_lbl)
+        header.addStretch()
+
+        if tag:
+            tag_lbl = QLabel(tag)
+            tag_lbl.setStyleSheet("""
+                background-color: rgba(56, 189, 248, 0.12);
+                color: #38BDF8;
+                font-size: 10px;
+                font-weight: 600;
+                padding: 2px 7px;
+                border-radius: 4px;
+                border: 1px solid rgba(56, 189, 248, 0.25);
+            """)
+            header.addWidget(tag_lbl)
+
+        layout.addLayout(header)
+
+        desc_lbl = QLabel(description)
+        desc_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+
+        return card
 
     def _refresh_license_ui(self):
         lic_info = get_license_status()
@@ -546,6 +781,8 @@ class SettingsDialog(QDialog):
                     selected.append(".tif")
                 elif ext == ".svg":
                     selected.append(".svgz")
+                elif ext == ".jpg":
+                    selected.append(".jpeg")
                 elif ext == ".docx":
                     selected.extend([".doc", ".docm", ".dotx", ".dot"])
                 elif ext == ".xlsx":
@@ -572,5 +809,3 @@ class SettingsDialog(QDialog):
         save_config(self.config)
         self.config_changed.emit(self.config)
         self.accept()
-
-

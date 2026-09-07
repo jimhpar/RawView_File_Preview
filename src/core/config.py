@@ -3,9 +3,20 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v3.1.6"
+APP_VERSION = "v3.9.1"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.1.6"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.9.1"
+
+# Standard Web & Raster Images (Disabled by default in settings)
+STANDARD_IMAGE_EXTENSIONS = {
+    ".jpg":  "JPEG Image",
+    ".jpeg": "JPEG Image",
+    ".png":  "Portable Network Graphics",
+    ".webp": "WebP Image",
+    ".gif":  "Graphics Interchange Format",
+    ".ico":  "Windows Icon",
+    ".bmp":  "Bitmap Image",
+}
 
 # Supported extensions
 SUPPORTED_EXTENSIONS = {
@@ -36,6 +47,8 @@ SUPPORTED_EXTENSIONS = {
     # Raster Images
     ".tif": "TIFF Image",
     ".tiff":"TIFF Image",
+    # Standard & Web Raster Images
+    **STANDARD_IMAGE_EXTENSIONS,
     # Video Formats
     ".mp4": "MPEG-4 Video",
     ".mkv": "Matroska Video",
@@ -102,7 +115,8 @@ DEFAULT_CONFIG = {
     "show_metadata": True,       # Show format badge, dimensions, size
     "enable_animations": True,   # Smooth fade/scale animations
     "cache_max_mb": 500,         # Max disk cache size
-    "supported_formats": list(SUPPORTED_EXTENSIONS.keys())
+    # Standard raster images (jpg, png, webp, gif, ico, bmp) are disabled by default
+    "supported_formats": [k for k in SUPPORTED_EXTENSIONS.keys() if k not in STANDARD_IMAGE_EXTENSIONS]
 }
 
 def load_config() -> dict:

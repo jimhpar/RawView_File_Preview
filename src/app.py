@@ -195,6 +195,7 @@ class RawViewApp(QObject):
                 disk_cache=self.disk_cache
             )
             worker.signals.finished.connect(self._on_decode_finished)
+            worker.signals.error.connect(self._on_decode_error)
             self.thread_pool.start(worker)
 
         except Exception as e:
@@ -204,6 +205,9 @@ class RawViewApp(QObject):
         # Only show if still hovering over the same file or pinned
         if self.hover_monitor.active_file_path == file_path or self.preview_hud.is_pinned:
             self.preview_hud.display_preview(file_path, result, cursor_x, cursor_y)
+
+    def _on_decode_error(self, file_path: str, error_msg: str):
+        print(f"[RawView] Decode error for {file_path}: {error_msg}")
 
     def _on_hover_cleared(self):
         if not self.preview_hud.is_pinned:

@@ -1,3 +1,71 @@
+# 🚀 RawView v3.9.1 Release Notes
+
+**RawView v3.9.1** is a massive milestone release featuring a sleek tabbed Settings & Shortcuts interface with vector checkmarks, support for legacy Adobe Illustrator & Microsoft Office file formats, optional preview support for standard and web images (JPG, PNG, WebP, GIF, ICO, BMP - off by default), and pre-checked Windows boot autostart in the setup installer.
+
+---
+
+## 🌟 What's New in v3.9.1
+
+### ✅ 1. Crisp Vector Checkmarks (`✓`) in Preferences
+* **Replaced Solid Blue Blocks**: Checkbox indicators across the Settings interface now feature a crisp, vector checkmark tick icon (`assets/checkmark.svg`) instead of a solid colored block, giving a modern and polished feel.
+* **Refined Hover & Active States**: Smooth visual feedback with `#0284C7` background, `#38BDF8` border, and high-contrast white ticks.
+
+### 🗂️ 2. Dual-Tabbed Settings Hub with Interactive Shortcuts Guide
+* **`⚙️ Preferences` Tab**: Clean, organized configuration for Lifetime Pro activation, hover responsiveness slider (40ms–350ms), boot autostart, and categorized file format toggles.
+* **`⌨️ Shortcuts & Controls` Tab**: Dedicated, visually rich instruction panel documenting all 9 keyboard and mouse controls with `<kbd>` badges and action summaries:
+  * `Ctrl + \`` — Toggle preview service on/off system-wide
+  * `Space` — Pin/unpin preview window or play/pause live video
+  * `Mouse Wheel` — Smooth zoom in/out (50% to 800%)
+  * `Left-Click + Drag` — Pan across zoomed canvas
+  * `Double-Click` — Reset zoom & pan to 100% default fit
+  * `Ctrl + C` — Copy full-resolution preview to Windows clipboard
+  * `Ctrl + O` or `Enter` — Open file in default application
+  * `Esc` — Immediately close and dismiss preview
+  * `Mouse Hover Away` — Smooth zero-lag auto-dismissal when unpinned
+
+### 🖼️ 3. Standard & Web Image Support (Disabled by Default)
+* **New Format Support**: Instant hardware-accelerated previews for `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.ico`, and `.bmp`.
+* **Off by Default**: Per user preference, standard images are **strictly unchecked by default** in settings so that RawView remains focused on specialized graphics and documents unless users explicitly check them.
+* **High-Performance Rendering**: Includes EXIF auto-orientation, RGBA alpha checkerboard backdrop, downsampling optimization for large multi-megapixel photos, and GIF frame count / ICO multi-size metadata.
+
+### 🏛️ 4. Legacy Adobe Illustrator & Microsoft Office Support
+* **Illustrator v1–v8 (Legacy PostScript/EPS)**: Binary EPS header extraction (`0xC5D0D3C6` / `0xC6D3D0C5`) retrieving embedded TIFF previews for vintage Illustrator artwork without PDF compatibility streams.
+* **Legacy Word (`.doc`) & RTF**: Binary text stream extraction providing readable document preview cards when Windows shell preview handlers are unavailable.
+* **Legacy Excel (`.xls`)**: BIFF8 record parsing to extract sheet names and workbook metadata.
+* **Two-Stage Shell Extraction**: Queries `IExtractImage` with full pipeline rendering before falling back to static icons.
+
+### 🚀 5. Setup Installer Autostart Checked by Default
+* **Pre-Checked Boot Option**: Updated Inno Setup installer script (`Flags: checkedonce`) so "Start RawView automatically when Windows boots" is pre-toggled during installation while remaining fully untickable by the user.
+
+---
+
+# 🚀 RawView v3.1.7 Release Notes
+
+**RawView v3.1.7** introduces a major vector rendering overhaul for **Adobe Illustrator (.AI)** files — delivering crystal-clear 300 DPI vector previews, eliminating low-res thumbnail dependencies, fixing white-canvas false-blank detection, and adding high-definition Illustrator branded overview cards for unstreamed files.
+
+---
+
+## 🌟 What's New in v3.1.7
+
+### 🎨 1. Vector-First Rendering for Adobe Illustrator (.AI)
+* **Crystal-Clear Vector Quality**: Illustrator files now prioritize native vector rasterization via PyMuPDF and PDFium at up to 1440px and 300 DPI. Previews are razor-sharp, allowing users to zoom in from 50% up to 800% to inspect typography, curves, and fine details.
+* **Eliminated False Overflow Skipping**: Previously, files with artwork, bleeds, or crop marks extending slightly outside the artboard (`has_overflow = True`) had vector rendering skipped completely, forcing RawView into low-res thumbnails. Vector rasterization is now always prioritized whenever vector elements exist.
+* **Multi-Artboard Discovery**: Automatically inspects multi-artboard Illustrator documents, reporting active artboard details (e.g. `Artboard 1 of 4`) in the preview badge.
+
+### 🔍 2. Precision Area-Downsampled Blank Canvas Detection
+* **Eliminated False-Blank Rejections**: Previously, small vector graphics (such as garment neck labels, logos, or icons) occupying less than 5% of a white artboard were falsely flagged as "blank pages" by a naive 95% brightness threshold.
+* **Area-Averaged Luminance Verification**: Replaced grid-based sampling with bilinear area downsampling. Pure blank pages are rejected cleanly, while designs with fine lines or small logos on white backgrounds render with 100% fidelity.
+
+### 🛡️ 3. High-Definition Adobe Illustrator Overview Cards
+* **Graceful Fallback for Non-PDF AI Files**: When designers save AI files with "Create PDF Compatible File" unchecked and without embedded thumbnails, RawView previously threw an unhandled exception with no preview window.
+* **Dark Glassmorphic Overview Card**: RawView now parses PostScript header metadata (`%%BoundingBox`, `%%HiResBoundingBox`, `%%Creator`, `%%Title`) to render a sleek, branded Adobe Illustrator Overview Card (Amber `#FF9A00` badge, artboard canvas dimensions, creator version, file size, and descriptive status).
+
+### ⚙️ 4. Thread-Safe Windows Shell Image Factory
+* **Worker Thread COM Initialization**: Explicitly initializes COM apartments (`CoInitialize`) and safely frees GDI bitmap handles in background worker threads, preventing intermittent `E_INVALIDARG` failures.
+* **Connected Worker Error Signals**: Connected background decode error signals to the application controller to eliminate silent drops and maintain robust logging.
+
+---
+
 # 🚀 RawView v3.1.6 Release Notes
 
 **RawView v3.1.6** brings pixel-perfect high-zoom rendering and a new global `Ctrl+\`` keyboard shortcut to toggle hover previews on/off instantly from anywhere.

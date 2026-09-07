@@ -45,10 +45,20 @@ _DeleteObject.restype = wintypes.BOOL
 class ShellImageFactory:
     """Hardware-accelerated Windows Shell image provider (utilizing native Adobe/system shell handlers)."""
     @staticmethod
-    def get_thumbnail(file_path: str, max_size: int = 1440, thumbnail_only: bool = False) -> QImage | None:
+    def get_thumbnail(file_path: str, max_size: int = 1440, thumbnail_only: bool = True) -> QImage | None:
+        """
+        Extracts native Windows shell thumbnail using IShellItemImageFactory.
+        thumbnail_only=True (default) ensures we NEVER extract generic file icons.
+        """
         try:
             if not os.path.exists(file_path):
                 return None
+            # Ensure COM is initialized on background worker threads
+            try:
+                ctypes.windll.ole32.CoInitialize(None)
+            except Exception:
+                pass
+
             iid = _IShellItemImageFactory._iid_
             p_item = c_void_p()
             hr = _SHCreateItemFromParsingName(file_path, None, byref(iid), byref(p_item))
@@ -62,7 +72,10 @@ class ShellImageFactory:
             
             if hbm:
                 qim = QImage.fromHBITMAP(int(hbm))
-                _DeleteObject(hbm)
+                try:
+                    _DeleteObject(hbm)
+                except Exception:
+                    pass
                 if not qim.isNull() and qim.width() > 10 and qim.height() > 10:
                     return qim
         except Exception:
@@ -115,22 +128,27 @@ class PreviewResult:
             return f"{hours}:{mins:02d}:{secs:02d}"
         return f"{mins}:{secs:02d}"
 
-def extract_xmp_image(file_path: str, max_scan_bytes: int = 2 * 1024 * 1024) -> QImage | None:
+def extract_xmp_image(file_path: str, max_scan_bytes: int = 4 * 1024 * 1024) -> QImage | None:
     """Fast, memory-efficient scanner that extracts embedded <xmpGImg:image> JPEG thumbnail."""
     try:
         size = os.path.getsize(file_path)
         with open(file_path, "rb") as f:
-            # Check header (first 2MB)
+            # Check header (first 4MB)
             chunk = f.read(max_scan_bytes)
             m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', chunk)
             if not m and size > max_scan_bytes:
-                # Check trailer (last 2MB)
+                # Check trailer (last 4MB)
                 f.seek(max(0, size - max_scan_bytes))
                 chunk = f.read(max_scan_bytes)
                 m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', chunk)
+            if not m and size <= 32 * 1024 * 1024:
+                # Full scan if under 32MB
+                f.seek(0)
+                full_data = f.read()
+                m = re.search(rb'<xmpGImg:image>([\s\S]*?)</xmpGImg:image>', full_data)
 
             if m:
-                b64_data = m.group(1).replace(b'&#xA;', b'').replace(b'\n', b'').replace(b'\r', b'').replace(b' ', b'').replace(b'\t', b'')
+                b64_data = m.group(1).replace(b"&#xA;", b"").replace(b"\n", b"").replace(b"\r", b"").replace(b" ", b"").replace(b"\t", b"").strip()
                 raw_bytes = base64.b64decode(b64_data)
                 qim = QImage.fromData(QByteArray(raw_bytes))
                 if not qim.isNull() and qim.width() > 10 and qim.height() > 10:
@@ -159,51 +177,29 @@ def pil_to_qimage(pil_img: Image.Image) -> QImage:
         qim = QImage(data, rgba.width, rgba.height, QImage.Format.Format_RGBA8888)
         return qim.copy()
 
-def _is_blank_image(qim: QImage, threshold: int = 240, sample_count: int = 100) -> bool:
-    """Detects if a QImage is nearly blank by sampling a grid of pixels.
-    Uses both brightness AND color variance checks:
-    - Brightness: >95% of samples are near-white (R,G,B >= threshold)
-    - Variance: Very low color diversity (all pixels are similar shade) indicates
-      an empty page with minor rendering artifacts (gray corners, faint lines).
-    Returns True if the image appears to be a blank page with no real artwork."""
+def _is_blank_image(qim: QImage, threshold: int = 248) -> bool:
+    """Detects if a QImage is completely blank (all white/near-white or uniform background)
+    with no visible artwork. Uses smooth area-downsampling to ensure even small vector marks
+    are never missed, while reliably rejecting truly empty white pages."""
     if qim.isNull() or qim.width() < 10 or qim.height() < 10:
         return True
-    w, h = qim.width(), qim.height()
-    # Sample pixels in a grid pattern, avoiding 5% edge margins
-    margin_x = max(int(w * 0.05), 1)
-    margin_y = max(int(h * 0.05), 1)
-    grid_side = int(sample_count ** 0.5)
-    step_x = max((w - 2 * margin_x) // grid_side, 1)
-    step_y = max((h - 2 * margin_y) // grid_side, 1)
-    bright_count = 0
-    total_count = 0
-    r_sum, g_sum, b_sum = 0, 0, 0
-    r_sq_sum, g_sq_sum, b_sq_sum = 0, 0, 0
-    for sx in range(margin_x, w - margin_x, step_x):
-        for sy in range(margin_y, h - margin_y, step_y):
-            c = qim.pixelColor(sx, sy)
-            r, g, b = c.red(), c.green(), c.blue()
-            total_count += 1
-            r_sum += r; g_sum += g; b_sum += b
-            r_sq_sum += r*r; g_sq_sum += g*g; b_sq_sum += b*b
-            if r >= threshold and g >= threshold and b >= threshold:
-                bright_count += 1
-    if total_count == 0:
-        return True
-    # Check 1: Nearly all pixels are bright white
-    if (bright_count / total_count) >= 0.95:
-        return True
-    # Check 2: Very low color variance (uniform shade = blank page with artifacts)
-    # A real artwork has diverse colors; a blank page with gray corners has very low variance.
-    r_var = (r_sq_sum / total_count) - (r_sum / total_count) ** 2
-    g_var = (g_sq_sum / total_count) - (g_sum / total_count) ** 2
-    b_var = (b_sq_sum / total_count) - (b_sum / total_count) ** 2
-    avg_variance = (r_var + g_var + b_var) / 3.0
-    avg_brightness = (r_sum + g_sum + b_sum) / (total_count * 3.0)
-    # If average brightness is high (>200) AND variance is very low (<150), it's blank
-    if avg_brightness > 200 and avg_variance < 150:
-        return True
-    return False
+
+    # Downsample to 32x32 using SmoothTransformation (bilinear area averaging across the entire image).
+    # If the image is 100% white, all 32x32 pixels will be 255.
+    # If any artwork, lines, text, or logos exist anywhere on the canvas, the averaged block
+    # luminance drops significantly below 248.
+    try:
+        thumb = qim.scaled(32, 32, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        min_val = 255
+        for x in range(32):
+            for y in range(32):
+                c = thumb.pixelColor(x, y)
+                min_val = min(min_val, c.red(), c.green(), c.blue())
+                if min_val < 240:
+                    return False
+        return min_val >= threshold
+    except Exception:
+        return False
 
 
 class PsdDecoder:
@@ -275,60 +271,206 @@ class PsdDecoder:
 
         raise RuntimeError("Could not decode PSD composite frame.")
 
+def _is_incomplete_vector_render(page, qim: QImage, xmp_qim: QImage | None) -> bool:
+    """
+    Detects if a PDF artboard rasterization is severely incomplete or missing artwork
+    that was placed on the pasteboard/canvas or embedded in private Illustrator data.
+    E.g. In Mighty Munchkin.ai, the artboard only covers 2 tiny corner boxes while
+    the full graphic (child, shirt, vest) is on the pasteboard and captured in XMP.
+    """
+    if not xmp_qim or xmp_qim.isNull():
+        return False
+    # If text elements or embedded images exist in the PDF stream, it's genuine content
+    if len(page.get_images()) > 0 or len(page.get_text().strip()) > 0:
+        return False
+    drawings = page.get_drawings()
+    if len(drawings) > 8:
+        return False
+    rect = page.rect
+    # Check if drawings extend significantly outside the artboard boundary
+    has_overflow = any(
+        d['rect'].x1 > rect.x1 * 1.05 or d['rect'].y1 > rect.y1 * 1.05 or
+        d['rect'].x0 < -0.05 * rect.x1 or d['rect'].y0 < -0.05 * rect.y1
+        for d in drawings
+    )
+    if not has_overflow:
+        return False
+    # Check non-white distribution in rendered QImage
+    small = qim.scaled(120, 120)
+    min_x, max_x = 120, 0
+    non_white = 0
+    for x in range(small.width()):
+        for y in range(small.height()):
+            c = small.pixelColor(x, y)
+            if c.red() < 245 or c.green() < 245 or c.blue() < 245:
+                non_white += 1
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+    if non_white == 0:
+        return True
+    coverage_w = (max_x - min_x) / 120.0
+    is_edge_squished = (min_x > 60) or (max_x < 60)
+    return is_edge_squished and coverage_w < 0.45
+
 class AiDecoder:
     """
     High-speed, high-fidelity decoder for Adobe Illustrator AI files.
-    Priority: Shell full render (complete workspace) → vector rasterization (artboard only) → XMP thumbnail.
-    Shell handlers use Adobe's native renderer for full workspace coverage.
-    Vector rasterizers (PyMuPDF/PDFium) are only used when artwork fits within the artboard.
+    Priority:
+    1. Legacy AI binary header (0xC5D0D3C6 / 0xC6D3D0C5) with embedded TIFF preview (AI v1–v8)
+    2. PyMuPDF Vector Rasterizer (Full crisp 1440px / up to 300 DPI vector rendering)
+    3. Fallback Vector: PDFium Rasterizer
+    4. Embedded XMP Composite Thumbnail (<xmpGImg:image> - captures full canvas & pasteboard)
+    5. Native Windows Shell Thumbnail (Cached thumbnail ONLY, never fallback to icon)
+    6. Ghostscript PostScript rendering (if available)
+    7. High-Definition Illustrator Branded Overview Card
     """
     @staticmethod
     def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
         size = os.path.getsize(file_path)
 
-        # 1. Detect whether elements exist outside the artboards (BoundingBox vs MediaBox)
-        has_overflow = False
+        # Extract PostScript header metadata for workspace info and card fallback
+        bbox_w, bbox_h = 0, 0
+        creator = ""
+        title = ""
         try:
             with open(file_path, "rb") as f:
                 header = f.read(1024 * 512).decode("latin-1", errors="ignore")
-
-            bbox_w, bbox_h = 0, 0
             m = re.search(r"%%BoundingBox:\s*([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)", header)
             if m:
                 x0, y0, x1, y1 = map(float, m.groups())
                 bbox_w = max(int(x1) - int(x0), 0)
                 bbox_h = max(int(y1) - int(y0), 0)
-
-            media_w, media_h = 0, 0
-            try:
-                doc = fitz.open(file_path)
-                if len(doc) > 0:
-                    rect = doc[0].rect
-                    media_w, media_h = int(rect.width), int(rect.height)
-            except Exception:
-                pass
-
-            if bbox_w * bbox_h > (media_w * media_h * 1.05):
-                has_overflow = True
+            m_c = re.search(r"%%Creator:\s*([^\r\n]+)", header)
+            if m_c:
+                creator = m_c.group(1).strip()
+            m_t = re.search(r"%%Title:\s*([^\r\n]+)", header)
+            if m_t:
+                title = m_t.group(1).strip()
         except Exception:
             pass
 
-        # 2. Native Windows Shell — FULL RENDER (not thumbnail_only)
-        #    Adobe's Shell extension renders the complete workspace at high resolution.
-        #    This gives full workspace coverage AND high resolution (best of both worlds).
-        shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=False)
-        if shell_qim and not shell_qim.isNull() and not _is_blank_image(shell_qim):
+        # Extract XMP embedded composite thumbnail early if present
+        xmp_qim = extract_xmp_image(file_path)
+
+        # 1. Legacy AI binary header (0xC5D0D3C6 / 0xC6D3D0C5) with embedded TIFF preview (AI v1.0–v8.0)
+        try:
+            with open(file_path, "rb") as f:
+                header_bin = f.read(32)
+                if len(header_bin) >= 30 and header_bin[:4] in (b"\xC5\xD0\xD3\xC6", b"\xC6\xD3\xD0\xC5"):
+                    tiff_offset, tiff_length = struct.unpack("<II", header_bin[20:28])
+                    if tiff_offset > 0 and tiff_length > 0 and (tiff_offset + tiff_length) <= size:
+                        f.seek(tiff_offset)
+                        tiff_bytes = f.read(tiff_length)
+                        qim = QImage.fromData(QByteArray(tiff_bytes))
+                        if not qim.isNull() and qim.width() > 10 and qim.height() > 10:
+                            return PreviewResult(
+                                qimage=qim,
+                                width=qim.width(),
+                                height=qim.height(),
+                                mode="Legacy AI (TIFF Preview)",
+                                format_name="AI",
+                                file_size=size,
+                                extra_info=creator if creator else "Legacy Illustrator"
+                            )
+        except Exception:
+            pass
+
+        # 2. Primary: PyMuPDF Vector Rasterizer (AI 9+ with PDF compatibility streams)
+        # Renders crystal-clear vector artwork at high DPI (up to 1440px / 300 DPI) for crisp zoom
+        try:
+            doc = fitz.open(file_path)
+            if len(doc) > 0:
+                page = doc[0]
+                has_content = len(page.get_drawings()) > 0 or len(page.get_text().strip()) > 0 or len(page.get_images()) > 0
+                rect = page.rect
+                page_w = max(int(rect.width), 10)
+                page_h = max(int(rect.height), 10)
+
+                dpi = int(min(max_size / max(page_w, page_h, 1) * 72, 300))
+                dpi = max(dpi, 72)
+                pix = page.get_pixmap(dpi=dpi)
+
+                if pix.width > 0 and pix.height > 0:
+                    samples = pix.samples
+                    if has_content or (len(samples) > 0 and min(samples) < 248):
+                        data = pix.tobytes("png")
+                        qim = QImage.fromData(QByteArray(data))
+                        if not qim.isNull() and not _is_blank_image(qim):
+                            # Verify that vector render is complete and not an incomplete pasteboard fragment
+                            if _is_incomplete_vector_render(page, qim, xmp_qim):
+                                return PreviewResult(
+                                    qimage=xmp_qim,
+                                    width=xmp_qim.width(),
+                                    height=xmp_qim.height(),
+                                    mode="RGB (Full Workspace)",
+                                    format_name="AI",
+                                    file_size=size,
+                                    extra_info="Workspace Thumbnail (Canvas Composite)"
+                                )
+                            artboard_info = f"Artboard 1 of {len(doc)}" if len(doc) > 1 else "Artboards: 1"
+                            return PreviewResult(
+                                qimage=qim,
+                                width=page_w,
+                                height=page_h,
+                                mode="RGB (Vector Artboard)",
+                                format_name="AI",
+                                file_size=size,
+                                extra_info=artboard_info
+                            )
+        except Exception:
+            pass
+
+        # 3. Fallback Vector: PDFium Rasterizer
+        try:
+            pdf = pdfium.PdfDocument(file_path)
+            if len(pdf) > 0:
+                page = pdf[0]
+                page_w = int(page.get_width())
+                page_h = int(page.get_height())
+                scale = min(max_size / max(page_w, page_h, 1), 3.0)
+                scale = max(scale, 1.0)
+
+                pil_img = page.render(scale=scale).to_pil()
+                qim = pil_to_qimage(pil_img)
+                if not qim.isNull() and not _is_blank_image(qim):
+                    if xmp_qim and not xmp_qim.isNull():
+                        return PreviewResult(
+                            qimage=xmp_qim,
+                            width=xmp_qim.width(),
+                            height=xmp_qim.height(),
+                            mode="RGB (Full Workspace)",
+                            format_name="AI",
+                            file_size=size,
+                            extra_info="Workspace Thumbnail"
+                        )
+                    artboard_info = f"Artboard 1 of {len(pdf)}" if len(pdf) > 1 else "Artboards: 1"
+                    return PreviewResult(
+                        qimage=qim,
+                        width=page_w,
+                        height=page_h,
+                        mode="RGB (Vector Artboard)",
+                        format_name="AI",
+                        file_size=size,
+                        extra_info=artboard_info
+                    )
+        except Exception:
+            pass
+
+        # 4. Embedded XMP Composite Thumbnail (<xmpGImg:image>)
+        # Illustrator embeds the full canvas & pasteboard composite in XMP metadata.
+        # This accurately renders artwork created on the pasteboard or outside artboard boundaries.
+        if xmp_qim and not xmp_qim.isNull():
             return PreviewResult(
-                qimage=shell_qim,
-                width=shell_qim.width(),
-                height=shell_qim.height(),
+                qimage=xmp_qim,
+                width=xmp_qim.width(),
+                height=xmp_qim.height(),
                 mode="RGB (Full Workspace)",
                 format_name="AI",
                 file_size=size,
-                extra_info="Native Render"
+                extra_info="Workspace Thumbnail"
             )
 
-        # 3. Shell thumbnail_only=True (cached Explorer thumbnail, faster but smaller)
+        # 5. Native Windows Shell Thumbnail (Cached thumbnail ONLY, never fallback to icon)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size=max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull() and not _is_blank_image(shell_qim):
             return PreviewResult(
@@ -341,78 +483,85 @@ class AiDecoder:
                 extra_info="Native Thumbnail"
             )
 
-        # 4. Vector rasterizers — ONLY when artwork fits within the artboard (no overflow).
-        #    PyMuPDF/PDFium render only the page/artboard area and clip everything outside.
-        #    If has_overflow=True, skip vector entirely to avoid losing content (logos, bleed, etc).
-        if not has_overflow:
-            # 4a. PyMuPDF Vector Rasterizer
+        # 6. If PostScript AI and Ghostscript is installed, render via Pillow
+        if GHOSTSCRIPT_AVAILABLE:
             try:
-                doc = fitz.open(file_path)
-                if len(doc) > 0:
-                    page = doc[0]
-                    rect = page.rect
-                    page_w = max(int(rect.width), 10)
-                    page_h = max(int(rect.height), 10)
-
-                    dpi = int(min(max_size / max(page_w, page_h, 1) * 72, 300))
-                    dpi = max(dpi, 72)
-                    pix = page.get_pixmap(dpi=dpi)
-
-                    if pix.width > 0 and pix.height > 0:
-                        data = pix.tobytes("png")
-                        qim = QImage.fromData(QByteArray(data))
-                        if not qim.isNull() and not _is_blank_image(qim):
-                            return PreviewResult(
-                                qimage=qim,
-                                width=page_w,
-                                height=page_h,
-                                mode="RGB (Vector Artboard)",
-                                format_name="AI",
-                                file_size=size,
-                                extra_info=f"Artboards: {len(doc)}"
-                            )
-            except Exception:
-                pass
-
-            # 4b. PDFium rasterizer
-            try:
-                pdf = pdfium.PdfDocument(file_path)
-                if len(pdf) > 0:
-                    page = pdf[0]
-                    page_w = int(page.get_width())
-                    page_h = int(page.get_height())
-                    scale = min(max_size / max(page_w, page_h, 1), 3.0)
-                    scale = max(scale, 1.0)
-
-                    pil_img = page.render(scale=scale).to_pil()
-                    qim = pil_to_qimage(pil_img)
-                    if not _is_blank_image(qim):
+                with Image.open(file_path) as img:
+                    img.load(scale=2)
+                    w, h = img.size
+                    qim = pil_to_qimage(img.convert("RGBA"))
+                    if not qim.isNull():
                         return PreviewResult(
                             qimage=qim,
-                            width=page_w,
-                            height=page_h,
-                            mode="RGB (Vector Artboard)",
+                            width=w,
+                            height=h,
+                            mode="PostScript Vector",
                             format_name="AI",
                             file_size=size,
-                            extra_info=f"Artboards: {len(pdf)}"
+                            extra_info="Legacy Illustrator (Ghostscript)"
                         )
             except Exception:
                 pass
 
-        # 5. XMP embedded thumbnail — last resort (full workspace but typically only ~256px)
-        qim = extract_xmp_image(file_path)
-        if qim and not qim.isNull():
-            return PreviewResult(
-                qimage=qim,
-                width=qim.width(),
-                height=qim.height(),
-                mode="RGB (Full Workspace)",
-                format_name="AI",
-                file_size=size,
-                extra_info="Full Canvas Workspace"
-            )
+        # 6. High-Definition Adobe Illustrator Branded Overview Card
+        # When an AI file was saved without PDF compatibility and without thumbnails,
+        # display a clean, informative overview card instead of failing silently.
+        card_w, card_h = 640, 420
+        qim = QImage(card_w, card_h, QImage.Format.Format_ARGB32_Premultiplied)
+        qim.fill(QColor(18, 20, 26, 255))
+        painter = QPainter(qim)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        raise RuntimeError("AI file has no workspace thumbnail or PDF compatibility stream.")
+        # Outer subtle amber border
+        painter.setPen(QColor(230, 140, 30, 120))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(15, 15, card_w - 30, card_h - 30, 12, 12)
+
+        # Illustrator Amber badge
+        painter.setBrush(QColor(255, 154, 0, 230))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(35, 35, 95, 28, 6, 6)
+        painter.setPen(QColor(26, 15, 0))
+        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.drawText(43, 54, "AI VECTOR")
+
+        # Document Title
+        display_title = title if title else Path(file_path).name
+        painter.setFont(QFont("Segoe UI", 14, QFont.Weight.DemiBold))
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(35, 110, display_title)
+
+        # Metadata Details
+        painter.setFont(QFont("Segoe UI", 11))
+        painter.setPen(QColor(180, 195, 215))
+        painter.drawText(35, 155, "Adobe Illustrator Artwork")
+        dim_str = f"{bbox_w} × {bbox_h} pt" if bbox_w > 0 and bbox_h > 0 else "Custom Canvas"
+        painter.drawText(35, 190, f"Bounding Box: {dim_str}")
+        if creator:
+            painter.drawText(35, 225, f"Created with: {creator}")
+        else:
+            painter.drawText(35, 225, "Created with: Adobe Illustrator")
+        painter.drawText(35, 260, f"File Size: {size / 1024.0:.1f} KB")
+
+        # Status note
+        painter.setBrush(QColor(40, 45, 60, 180))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(35, 300, 420, 34, 6, 6)
+        painter.setPen(QColor(240, 170, 70))
+        painter.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+        painter.drawText(45, 322, "ℹ Native Artwork (Saved without PDF Stream or Embedded Thumbnail)")
+
+        painter.end()
+
+        return PreviewResult(
+            qimage=qim,
+            width=bbox_w if bbox_w > 0 else card_w,
+            height=bbox_h if bbox_h > 0 else card_h,
+            mode="Illustrator Overview",
+            format_name="AI",
+            file_size=size,
+            extra_info=creator if creator else "Native Artwork"
+        )
 
 class EpsDecoder:
     """High-speed decoder for Encapsulated PostScript (.eps) files."""
@@ -755,6 +904,121 @@ class VideoDecoder:
             extra_info="Live Video"
         )
 
+class StandardImageDecoder:
+    """Ultra-fast zero-lag decoder for standard web & raster images (JPG, PNG, GIF, ICO, WebP, BMP)."""
+    @staticmethod
+    def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
+        size = os.path.getsize(file_path)
+        ext = Path(file_path).suffix.lower()
+        fmt_name = ext.lstrip(".").upper()
+
+        with Image.open(file_path) as img:
+            orig_w, orig_h = img.size
+            mode = img.mode
+
+            # Auto-orient based on EXIF
+            try:
+                img = ImageOps.exif_transpose(img)
+                orig_w, orig_h = img.size
+            except Exception:
+                pass
+
+            if mode in ("RGBA", "LA") or (mode == "P" and "transparency" in img.info):
+                render_img = img.convert("RGBA")
+            elif mode in ("CMYK", "YCbCr", "LAB"):
+                render_img = img.convert("RGB")
+            elif mode == "1":
+                render_img = img.convert("L")
+            else:
+                render_img = img.convert("RGB")
+
+            if max(orig_w, orig_h) > max_size:
+                render_img.thumbnail((max_size, max_size), Image.Resampling.BILINEAR)
+
+            qim = pil_to_qimage(render_img)
+
+            extra = ""
+            if getattr(img, "is_animated", False):
+                extra = f"Animated GIF ({getattr(img, 'n_frames', 1)} frames)"
+            elif ext == ".ico":
+                extra = f"Icon ({orig_w}×{orig_h})"
+            elif ext in (".jpg", ".jpeg"):
+                extra = f"{mode} Photo"
+            elif ext == ".png":
+                extra = "Lossless PNG"
+            elif ext == ".webp":
+                extra = "WebP Graphic"
+            elif ext == ".bmp":
+                extra = "Bitmap Image"
+
+            return PreviewResult(
+                qimage=qim,
+                width=orig_w,
+                height=orig_h,
+                mode=mode,
+                format_name=fmt_name,
+                file_size=size,
+                extra_info=extra
+            )
+
+def extract_doc_text(data: bytes, max_chars: int = 300) -> str:
+    """Extracts readable text from Word 97-2003 (.doc) binary streams."""
+    try:
+        utf16_matches = re.findall(rb'(?:[\x20-\x7E]\x00){4,}', data)
+        texts = []
+        for m in utf16_matches:
+            try:
+                t = m.decode('utf-16le', errors='ignore').strip()
+                if len(t) > 3 and not any(t.startswith(x) for x in ('Normal', 'Heading', 'Default', 'Times', 'Calibri', 'Arial', 'Symbol', 'Table')):
+                    texts.append(t)
+            except Exception:
+                pass
+        if texts:
+            return " ".join(texts[:10])[:max_chars]
+        ascii_matches = re.findall(rb'[\x20-\x7E\r\n\t]{6,}', data)
+        ascii_texts = [m.decode('latin-1', errors='ignore').strip() for m in ascii_matches if len(m) > 5]
+        return " ".join(ascii_texts[:10])[:max_chars]
+    except Exception:
+        return ""
+
+def clean_rtf(rtf_text: str, max_chars: int = 300) -> str:
+    """Strips RTF control sequences to extract clean readable plain text."""
+    try:
+        text = re.sub(r'\\[a-zA-Z]+(-?\d+)? ?', '', rtf_text)
+        text = re.sub(r'[{}]', '', text)
+        return " ".join(text.split())[:max_chars]
+    except Exception:
+        return ""
+
+def extract_xls_sheets(data: bytes) -> list[str]:
+    """Parses BIFF8 BOUNDSHEET (0x0085) records from Excel 97-2003 (.xls) files."""
+    sheets = []
+    idx = 0
+    try:
+        while idx < len(data) - 10:
+            rec_id = struct.unpack_from('<H', data, idx)[0]
+            if rec_id == 0x0085:
+                rec_len = struct.unpack_from('<H', data, idx + 2)[0]
+                if 6 <= rec_len <= 256 and idx + 4 + rec_len <= len(data):
+                    rec_data = data[idx + 4 : idx + 4 + rec_len]
+                    if len(rec_data) >= 8:
+                        cch = rec_data[6]
+                        flags = rec_data[7]
+                        if flags == 0 and len(rec_data) >= 8 + cch:
+                            name = rec_data[8 : 8 + cch].decode('latin-1', errors='ignore')
+                            if name and name.isprintable():
+                                sheets.append(name)
+                        elif flags == 1 and len(rec_data) >= 8 + cch * 2:
+                            name = rec_data[8 : 8 + cch * 2].decode('utf-16le', errors='ignore')
+                            if name and name.isprintable():
+                                sheets.append(name)
+                idx += 4 + rec_len
+            else:
+                idx += 1
+    except Exception:
+        pass
+    return sheets
+
 class OfficeDocDecoder:
     """Ultra-fast decoder for Microsoft Word, Excel, PowerPoint, RTF, and CSV documents."""
     
@@ -844,6 +1108,8 @@ class OfficeDocDecoder:
         overview_rows = []
         if meta.get("title"):
             overview_rows.append(("Title:", str(meta["title"])))
+        if meta.get("text_preview"):
+            overview_rows.append(("Preview:", str(meta["text_preview"])[:65]))
         if meta.get("author"):
             overview_rows.append(("Author:", str(meta["author"])))
         if meta.get("sheets"):
@@ -973,21 +1239,59 @@ class OfficeDocDecoder:
                                 meta["author"] = elem.text
             except Exception:
                 pass
+
+        # 2. Extract text/metadata from legacy .doc, .rtf, .xls, .csv
+        elif ext in (".doc", ".dot"):
+            try:
+                with open(file_path, "rb") as f:
+                    doc_bytes = f.read(256 * 1024)
+                meta["text_preview"] = extract_doc_text(doc_bytes)
+                meta["title"] = Path(file_path).stem.replace("_", " ")
+            except Exception:
+                pass
+        elif ext in (".rtf",):
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    rtf_content = f.read(65536)
+                meta["text_preview"] = clean_rtf(rtf_content)[:120]
+                meta["title"] = Path(file_path).stem.replace("_", " ")
+            except Exception:
+                pass
+        elif ext in (".xls",):
+            try:
+                with open(file_path, "rb") as f:
+                    xls_bytes = f.read(512 * 1024)
+                sheets = extract_xls_sheets(xls_bytes)
+                if sheets:
+                    meta["sheets"] = ", ".join(sheets[:5])
+                meta["title"] = Path(file_path).stem.replace("_", " ")
+            except Exception:
+                pass
+        elif ext in (".csv",):
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = [f.readline().strip() for _ in range(3)]
+                valid_lines = [l for l in lines if l]
+                if valid_lines:
+                    meta["text_preview"] = " | ".join(valid_lines[0].split(",")[:4])
+                meta["title"] = Path(file_path).stem.replace("_", " ")
+            except Exception:
+                pass
                 
-        # 2. Try Windows Shell Image Factory STRICTLY for actual visual thumbnails (thumbnail_only=True)
+        # 3. Try Windows Shell Image Factory (Cached thumbnail ONLY, never generic icon)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
             return PreviewResult(
                 qimage=shell_qim,
                 width=shell_qim.width(),
                 height=shell_qim.height(),
-                mode="RGB (Shell Preview)",
+                mode="RGB (Office Preview)",
                 format_name=fmt_name,
                 file_size=size,
                 extra_info="Office Document"
             )
             
-        # 3. Fallback to Rich Branded Card
+        # 4. Fallback to Rich Branded Card with extracted metadata/text
         card = cls._create_fallback_card(ext, file_path, size, meta)
         return PreviewResult(
             qimage=card,
@@ -1330,6 +1634,14 @@ class DecoderManager:
         # TIFF
         ".tif": TiffDecoder,
         ".tiff": TiffDecoder,
+        # Standard & Web Raster Images (Optional, disabled by default in settings)
+        ".jpg": StandardImageDecoder,
+        ".jpeg": StandardImageDecoder,
+        ".png": StandardImageDecoder,
+        ".webp": StandardImageDecoder,
+        ".gif": StandardImageDecoder,
+        ".ico": StandardImageDecoder,
+        ".bmp": StandardImageDecoder,
         # Camera RAW
         ".dng": RawCameraDecoder,
         ".cr2": RawCameraDecoder,

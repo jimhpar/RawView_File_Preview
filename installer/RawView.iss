@@ -1,8 +1,8 @@
-; Inno Setup Script for RawView v3.1.6
+; Inno Setup Script for RawView v3.9.1
 ; Installs into C:\Program Files\RawView with Windows Boot Autostart & Clean Uninstallation
 
 #define MyAppName "RawView"
-#define MyAppVersion "3.1.6"
+#define MyAppVersion "3.9.1"
 #define MyAppPublisher "BlackBox THC"
 #define MyAppURL "https://github.com/jimhpar/RawView_File_Preview"
 #define MyAppExeName "RawView.exe"
@@ -19,7 +19,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\dist_installer
-OutputBaseFilename=RawView_v3.1.6_Setup
+OutputBaseFilename=RawView_v3.9.1_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -33,12 +33,13 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "autostart"; Description: "&Start RawView automatically when Windows boots"; GroupDescription: "Startup Options:"; Flags: unchecked
+Name: "autostart"; Description: "&Start RawView automatically when Windows boots"; GroupDescription: "Startup Options:"; Flags: checkedonce
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "..\dist\RawView\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\assets\app_icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\assets\checkmark.svg"; DestDir: "{app}\assets"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app_icon.ico"

@@ -704,9 +704,13 @@ class FloatingPreviewHUD(QWidget):
         self.copy_shortcut = QShortcut(QKeySequence("Ctrl+C"), self)
         self.copy_shortcut.activated.connect(self.copy_image_to_clipboard)
 
-        # Ctrl+O / Return: Open File
+        # Ctrl+O / Return / Enter: Open File
         self.open_shortcut = QShortcut(QKeySequence("Ctrl+O"), self)
         self.open_shortcut.activated.connect(self.open_current_file)
+        self.return_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
+        self.return_shortcut.activated.connect(self.open_current_file)
+        self.enter_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Enter), self)
+        self.enter_shortcut.activated.connect(self.open_current_file)
 
     def _on_open_settings(self):
         self.dismiss()

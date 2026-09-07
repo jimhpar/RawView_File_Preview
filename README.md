@@ -1,6 +1,6 @@
-# RawView (v3.1.6)
+# RawView (v3.9.1)
 
-**RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, Microsoft Office files, and media projects in Windows Explorer, Desktop, and File Dialogs.
+**RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups and live video playback when hovering over design, graphics, documents, Microsoft Office files, media projects, and standard images in Windows Explorer, Desktop, and File Dialogs.
 
 ---
 
@@ -10,18 +10,21 @@
 - **🎬 Smart Linked Video & Footage Playback**:
   - **After Effects & Premiere Pro (`.aep`, `.prproj`)**: Automatically discovers matching rendered/exported MP4/MOV videos and linked timeline footage clips to play instant hardware-accelerated live video on hover!
   - **Motion Graphics Typography Showcase**: Automatically visualizes text layers, composition names, and project properties when projects have no external video footage.
-- **📄 Microsoft Office & Document Previews**:
-  - **Word**: `.docx`, `.doc`, `.docm`, `.dotx`, `.dot`, `.rtf` (embedded thumbnail + page/word count)
-  - **Excel**: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.xltx`, `.csv` (sheet names + financial tables)
+- **📄 Microsoft Office & Document Previews (Modern & Legacy)**:
+  - **Word**: `.docx`, `.doc`, `.docm`, `.dotx`, `.dot`, `.rtf` (embedded thumbnail + page/word count + binary text preview fallback)
+  - **Excel**: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.xltx`, `.csv` (sheet names + financial tables + BIFF8 legacy parsing)
   - **PowerPoint**: `.pptx`, `.ppt`, `.pptm`, `.ppsx`, `.potx` (slide count + presentation overview)
-- **🎨 Comprehensive Graphics & Design Support**:
+- **🎨 Comprehensive Graphics & Design Support (Modern & Legacy)**:
   - **PSD & PSB**: Adobe Photoshop files (instant composite & layer extraction)
-  - **AI**: Adobe Illustrator files (PDF vector rasterization & full workspace previews)
+  - **AI (Modern & Legacy v1–v8)**: Adobe Illustrator files (vector-first rasterization at 300 DPI, binary EPS header TIFF extraction for legacy versions, full workspace fallback, and branded overview cards)
   - **EPS**: Encapsulated PostScript (full artwork XMP canvas & binary TIFF previews)
   - **PDF**: Portable Document Format (vector rasterization)
   - **Camera RAW**: Ultra-fast embedded previews for DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, and 10+ other formats
   - **TIFF & TIF**: Multi-page, 16-bit, and high-dynamic range images
   - **SVG & SVGZ**: Scalable Vector Graphics with GPU rasterization
+- **🖼️ Standard & Web Images (Optional, Off by Default)**:
+  - **JPEG, PNG, WebP, GIF, ICO, BMP**: Full EXIF orientation, alpha transparency checkerboard, downsampled large photos, and frame count inspection.
+  - **User-Controlled**: Unchecked by default in settings so you only preview them when enabled.
 - **🎬 Smooth Live Video Playback**: Instant muted looping video previews for **MP4, MKV, MOV, AVI, WMV, WebM, FLV, TS, 3GP** with live progress tracking and resolution badge.
 - **📂 Multi-Tab & Blank Space Isolation**: Intelligent cursor containment prevents phantom previews when hovering over empty space or switching between multiple Explorer tabs.
 - **⏳ 7-Day Free Unlimited Trial**: Unrestricted access to 100% of all features and formats.
@@ -30,28 +33,29 @@
 - **⚡ Multi-Tier Caching**:
   - **L1 In-Memory LRU Cache**: Sub-millisecond instant recall for active browsing
   - **L2 Persistent Disk Cache**: Compressed thumbnail storage with hash-based invalidation
-- **🖱️ Interactive Controls**:
+- **⌨️ Interactive Shortcuts & Controls**:
   - `Ctrl + \``: Toggle hover preview **On / Off** globally (system-wide hotkey)
-  - `Space`: Pin preview window or Play/Pause video
-  - Mouse Wheel: Zoom in / zoom out (images & vectors)
-  - `Ctrl + C`: Copy preview image to clipboard
-  - `Ctrl + O` / Enter: Open file in default application
-  - `Esc`: Close preview immediately
-- **⚙️ System Tray & Settings**:
-  - Modern scrollable settings dialog with categorized format toggles (Graphics, Office, Adobe Projects, Videos)
-  - Pro License activation hub with 1-click Machine Code copy and support links
-  - Speed presets (Ultra-Fast 80ms, Fast 120ms, Relaxed 250ms)
-  - Cache manager and Windows Boot Autostart
-- **📦 Clean Installer**: Installs into `C:\Program Files\RawView` with Start Menu & Desktop shortcuts.
+  - `Space`: Pin preview window on screen or Play/Pause live video
+  - `Mouse Wheel`: Zoom in / zoom out (50% to 800% for images & documents)
+  - `Left-Click + Drag`: Pan smoothly across zoomed canvas
+  - `Double-Click`: Reset zoom and pan to 100% default fit
+  - `Ctrl + C`: Copy full-resolution preview image to Windows clipboard
+  - `Ctrl + O` or `Enter`: Open file in default application
+  - `Esc`: Close and dismiss preview immediately
+  - `Mouse Hover Away`: Auto-dismiss preview on cursor leave (when unpinned)
+- **⚙️ Dual-Tabbed Settings Hub**:
+  - `⚙️ Preferences`: Pro license activation, responsiveness slider, autostart toggle, and categorized format checkboxes with crisp vector checkmarks (`✓`)
+  - `⌨️ Shortcuts & Controls`: Visual reference cards explaining every shortcut and control
+- **📦 Clean Installer**: Installs into `C:\Program Files\RawView` with "Start RawView on Windows boot" pre-checked by default.
 
 ---
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v3.1.6_Setup.exe` installer:
+To compile the standalone `RawView_v3.9.1_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v3.1.6_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v3.9.1_Setup.exe`.
