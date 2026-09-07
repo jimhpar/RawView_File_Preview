@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGraphicsDropShadowEffect,
-    QApplication, QFrame, QStackedWidget, QProgressBar, QPushButton
+    QApplication, QFrame, QStackedWidget, QProgressBar, QPushButton, QScrollArea
 )
 from PyQt6.QtCore import (
     Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QUrl
@@ -523,6 +523,200 @@ class TrialExpiredCard(QWidget):
         url_str = f"https://wa.me/12027806050?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
         QDesktopServices.openUrl(QUrl(url_str))
 
+class PageThumbnailCard(QFrame):
+    clicked = pyqtSignal(int)
+
+    def __init__(self, page_idx: int, thumb_img: QImage = None, parent=None):
+        super().__init__(parent)
+        self.page_idx = page_idx
+        self.is_active = False
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedWidth(82)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(3)
+
+        self.thumb_label = QLabel(self)
+        self.thumb_label.setFixedSize(74, 96)
+        self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.thumb_label.setStyleSheet("background-color: #121622; border-radius: 4px;")
+
+        if thumb_img and not thumb_img.isNull():
+            pix = QPixmap.fromImage(thumb_img).scaled(
+                74, 96,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.thumb_label.setPixmap(pix)
+
+        layout.addWidget(self.thumb_label)
+
+        self.name_label = QLabel(f"Page {page_idx + 1}", self)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 600;")
+        layout.addWidget(self.name_label)
+
+        self._update_style()
+
+    def set_thumbnail(self, thumb_img: QImage):
+        if thumb_img and not thumb_img.isNull():
+            pix = QPixmap.fromImage(thumb_img).scaled(
+                74, 96,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.thumb_label.setPixmap(pix)
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        self._update_style()
+
+    def _update_style(self):
+        if self.is_active:
+            self.setStyleSheet("""
+                PageThumbnailCard {
+                    background-color: rgba(56, 189, 248, 0.15);
+                    border: 1.5px solid #38BDF8;
+                    border-radius: 6px;
+                }
+            """)
+            self.name_label.setStyleSheet("color: #38BDF8; font-size: 10px; font-weight: 700;")
+        else:
+            self.setStyleSheet("""
+                PageThumbnailCard {
+                    background-color: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 6px;
+                }
+                PageThumbnailCard:hover {
+                    background-color: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(56, 189, 248, 0.5);
+                }
+            """)
+            self.name_label.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 600;")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.page_idx)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+
+class PageThumbnailSidebar(QFrame):
+    page_selected = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.cards = []
+        self.current_idx = 0
+        self.setFixedWidth(98)
+        self.setStyleSheet("""
+            PageThumbnailSidebar {
+                background-color: rgba(12, 16, 26, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 8, 6, 8)
+        layout.setSpacing(6)
+
+        # Header with badge
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(2, 0, 2, 0)
+        self.header_label = QLabel("PAGES", self)
+        self.header_label.setStyleSheet("color: #64748B; font-size: 10px; font-weight: 700; letter-spacing: 1px;")
+        header_layout.addWidget(self.header_label)
+
+        self.count_badge = QLabel("0", self)
+        self.count_badge.setStyleSheet("color: #38BDF8; font-size: 10px; font-weight: 700; background: rgba(56, 189, 248, 0.15); padding: 1px 4px; border-radius: 3px;")
+        header_layout.addWidget(self.count_badge, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(header_layout)
+
+        # Scroll area for page thumbnails
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 4px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 2px;
+                min-height: 20px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+
+        self.scroll_content = QWidget()
+        self.scroll_content.setStyleSheet("background: transparent;")
+        self.cards_layout = QVBoxLayout(self.scroll_content)
+        self.cards_layout.setContentsMargins(0, 2, 0, 2)
+        self.cards_layout.setSpacing(6)
+        self.cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.scroll_area.setWidget(self.scroll_content)
+        layout.addWidget(self.scroll_area, stretch=1)
+
+        # Hint at bottom
+        self.hint_label = QLabel("Space: Pin", self)
+        self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint_label.setStyleSheet("color: #475569; font-size: 9px; font-weight: 600; padding: 2px 0;")
+        layout.addWidget(self.hint_label)
+
+    def set_pages(self, count: int, thumbnails: list, active_idx: int = 0):
+        # Clear existing cards
+        for c in self.cards:
+            c.setParent(None)
+            c.deleteLater()
+        self.cards.clear()
+
+        self.current_idx = active_idx
+        self.count_badge.setText(str(count))
+
+        for idx in range(count):
+            thumb = thumbnails[idx] if thumbnails and idx < len(thumbnails) else None
+            card = PageThumbnailCard(idx, thumb, self.scroll_content)
+            card.clicked.connect(self._on_card_clicked)
+            if idx == active_idx:
+                card.set_active(True)
+            self.cards.append(card)
+            self.cards_layout.addWidget(card)
+
+    def set_active_page(self, idx: int):
+        if 0 <= idx < len(self.cards):
+            self.current_idx = idx
+            for i, c in enumerate(self.cards):
+                c.set_active(i == idx)
+            card = self.cards[idx]
+            self.scroll_area.ensureWidgetVisible(card)
+
+    def update_pin_status(self, is_pinned: bool):
+        if is_pinned:
+            self.hint_label.setText("PINNED")
+            self.hint_label.setStyleSheet("color: #38BDF8; font-size: 9px; font-weight: 700; padding: 2px 0;")
+        else:
+            self.hint_label.setText("Space: Pin")
+            self.hint_label.setStyleSheet("color: #475569; font-size: 9px; font-weight: 600; padding: 2px 0;")
+
+    def _on_card_clicked(self, idx: int):
+        self.set_active_page(idx)
+        self.page_selected.emit(idx)
+
+
 class FloatingPreviewHUD(QWidget):
     """
     Hardware-accelerated, glassmorphic floating preview window for RawView v3.1.5.
@@ -625,7 +819,16 @@ class FloatingPreviewHUD(QWidget):
 
         container_layout.addLayout(header_layout)
 
-        # 2. Main Viewport Stack (Image Canvas vs Live Video Player vs Trial Expired Card)
+        # 2. Main Body: Horizontal layout with Page Thumbnail Sidebar on Left + Viewport Stack
+        self.body_layout = QHBoxLayout()
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.body_layout.setSpacing(8)
+
+        self.page_sidebar = PageThumbnailSidebar(self)
+        self.page_sidebar.page_selected.connect(self._on_page_selected)
+        self.page_sidebar.hide()
+        self.body_layout.addWidget(self.page_sidebar)
+
         self.viewport_stack = QStackedWidget(self)
         self.viewport_stack.setStyleSheet("background-color: transparent;")
 
@@ -646,7 +849,8 @@ class FloatingPreviewHUD(QWidget):
         self.trial_card.open_settings_requested.connect(self._on_open_settings)
         self.viewport_stack.addWidget(self.trial_card)
 
-        container_layout.addWidget(self.viewport_stack, stretch=1)
+        self.body_layout.addWidget(self.viewport_stack, stretch=1)
+        container_layout.addLayout(self.body_layout, stretch=1)
 
         # 3. Metadata Footer Bar
         self.footer_layout = QHBoxLayout()
@@ -712,6 +916,16 @@ class FloatingPreviewHUD(QWidget):
         self.enter_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Enter), self)
         self.enter_shortcut.activated.connect(self.open_current_file)
 
+        # Multi-page Document Navigation (Down / Up / PageDown / PageUp)
+        self.down_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Down), self)
+        self.down_shortcut.activated.connect(self.select_next_page)
+        self.up_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Up), self)
+        self.up_shortcut.activated.connect(self.select_prev_page)
+        self.pagedown_shortcut = QShortcut(QKeySequence(Qt.Key.Key_PageDown), self)
+        self.pagedown_shortcut.activated.connect(self.select_next_page)
+        self.pageup_shortcut = QShortcut(QKeySequence(Qt.Key.Key_PageUp), self)
+        self.pageup_shortcut.activated.connect(self.select_prev_page)
+
     def _on_open_settings(self):
         self.dismiss()
         self.open_settings_requested.emit()
@@ -773,6 +987,7 @@ class FloatingPreviewHUD(QWidget):
 
         # If trial expired -> Display Trial Expired Card
         if not is_unlocked:
+            self.page_sidebar.hide()
             self.video_player.stop_video()
             self.viewport_stack.setCurrentWidget(self.trial_card)
             fname = Path(file_path).name if not file_path.startswith("ftp://") else file_path.split("/")[-1]
@@ -795,6 +1010,19 @@ class FloatingPreviewHUD(QWidget):
             self.raise_()
             self.visibility_changed.emit(True)
             return
+
+        # Setup multi-page sidebar if document has multiple pages
+        page_count = getattr(result, "page_count", 1)
+        if page_count > 1:
+            self.page_sidebar.set_pages(page_count, result.page_thumbnails, active_idx=result.current_page_idx)
+            self.page_sidebar.update_pin_status(self.is_pinned)
+            self.page_sidebar.show()
+            if not self.is_pinned:
+                self.pin_label.setText("Space to Pin & Browse")
+        else:
+            self.page_sidebar.hide()
+            if not self.is_pinned:
+                self.pin_label.setText("Space to Pin")
 
         # Update Header
         fname = Path(file_path).name if not file_path.startswith("ftp://") else file_path.split("/")[-1]
@@ -836,7 +1064,10 @@ class FloatingPreviewHUD(QWidget):
             self.viewport_stack.setCurrentWidget(self.canvas)
             self.canvas.set_image(result.qimage, max_w=self.max_view_size, max_h=int(self.max_view_size * 0.75))
             self.dim_label.setText(result.dimensions_str)
-            self.mode_label.setText(result.mode)
+            if page_count > 1:
+                self.mode_label.setText(f"Page {result.current_page_idx + 1} of {page_count}")
+            else:
+                self.mode_label.setText(result.mode)
             self.zoom_badge.setText("100%")
             self.zoom_badge.setStyleSheet("""
                 color: #A78BFA;
@@ -865,11 +1096,39 @@ class FloatingPreviewHUD(QWidget):
         self.raise_()
         self.visibility_changed.emit(True)
 
+    def _on_page_selected(self, page_idx: int):
+        if not self.current_result:
+            return
+        if not self.is_pinned:
+            self.toggle_pin()
+        self.current_result.current_page_idx = page_idx
+        page_img = self.current_result.get_page(page_idx)
+        if page_img and not page_img.isNull():
+            self.canvas.set_image(page_img, max_w=self.max_view_size, max_h=int(self.max_view_size * 0.75))
+            self.page_sidebar.set_active_page(page_idx)
+            total = self.current_result.page_count
+            self.mode_label.setText(f"Page {page_idx + 1} of {total}")
+            dim_str = f"{page_img.width()} × {page_img.height()} px"
+            self.dim_label.setText(dim_str)
+
+    def select_next_page(self):
+        if self.current_result and getattr(self.current_result, "page_count", 1) > 1:
+            idx = self.current_result.current_page_idx + 1
+            if idx < self.current_result.page_count:
+                self._on_page_selected(idx)
+
+    def select_prev_page(self):
+        if self.current_result and getattr(self.current_result, "page_count", 1) > 1:
+            idx = self.current_result.current_page_idx - 1
+            if idx >= 0:
+                self._on_page_selected(idx)
+
     def toggle_pin(self):
         if not self.isVisible():
             return
         self.is_pinned = not self.is_pinned
         self.pin_state_changed.emit(self.is_pinned)
+        self.page_sidebar.update_pin_status(self.is_pinned)
         
         if self.is_pinned:
             self.pin_label.setText("PINNED (Space to Unpin)")
@@ -884,7 +1143,11 @@ class FloatingPreviewHUD(QWidget):
             """)
             self.activateWindow()
         else:
-            self.pin_label.setText("Space to Pin")
+            page_count = getattr(self.current_result, "page_count", 1) if self.current_result else 1
+            if page_count > 1:
+                self.pin_label.setText("Space to Pin & Browse")
+            else:
+                self.pin_label.setText("Space to Pin")
             self.pin_label.setStyleSheet("""
                 color: #64748B;
                 font-size: 10px;
@@ -901,6 +1164,7 @@ class FloatingPreviewHUD(QWidget):
         self.pin_state_changed.emit(False)
         self.video_player.stop_video()
         self.canvas.reset_view()
+        self.page_sidebar.hide()
         self.hide()
         self.visibility_changed.emit(False)
 

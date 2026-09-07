@@ -1,3 +1,53 @@
+# 🚀 RawView v3.9.3 Release Notes
+
+**RawView v3.9.3** introduces multi-page thumbnail sidebar navigation for **PDF** and **Word documents**, enabling users to pin with `Space` and seamlessly browse through any document page with thumbnails or keyboard controls. Additionally, v3.9.3 incorporates a built-in **Bijoy/SutonnyMJ-to-Unicode engine** that perfectly resolves corrupted Bengali typography in Word documents into clean, authentic Bengali text.
+
+---
+
+## 🌟 What's New in v3.9.3
+
+### 📑 1. Left Thumbnail Sidebar for Multi-Page PDF & Word Documents
+* **Visual Page Thumbnails**: For multi-page PDFs and Word files (`.docx`, `.doc`, `.rtf`), RawView automatically renders a vertical left sidebar displaying real miniature page previews with page number badges (`Page 1`, `Page 2`, `Page 3`...).
+* **Space to Pin & Browse**: Press `Space` to pin the preview window into an interactive state, allowing you to click any page card to inspect it immediately.
+* **Keyboard Page Navigation**: When pinned, navigate between document pages using `Down` / `Up` or `PageDown` / `PageUp`.
+* **Dynamic Active State**: The active page card highlights with a vivid `#38BDF8` border and accent background glow.
+* **Zero Overhead on Single-Page Files**: The sidebar automatically hides for single-page documents, images, and videos, keeping the preview window clean and compact.
+
+### 🇧🇩 2. Authentic Bengali Font & SutonnyMJ/Bijoy Typography Engine
+* **Full Bijoy to Unicode Translation**: Resolves corrupted ASCII letters in legacy SutonnyMJ/Bijoy Word documents (e.g. `wemwgjø...` renders as `বিসমিল্লাহির রাহমানির রাহিম`, `Ò‡`vKvb Ni...` renders as `“দোকান ঘর ভাড়ার চুক্তিপত্র দলিল”`).
+* **Comprehensive Bengali Conjunct & Modifier Support**: Accurately handles complex conjuncts (`ক্ষ`, `জ্ঞ`, `ঞ্চ`, `ঞ্জ`, `ত্র`, `দ্ব`, `দ্ম`, `ষ্ট`, `ষ্ঠ`, `ষ্ণ`, `হ্ম`, `হু`, `স্ব`, `স্ক`, `স্ত`, `স্থ`, `স্ন`, `স্প`, `স্ম`, `ল্ল`, `শ্ব`, `শ্ম`, `ন্দ`, `ন্ধ`, `ন্ত`, `ম্প`, `ম্ব`, `ম্ভ`, `ম্ম`, `ক্ত`, `চ্চ`, `চ্ছ`, `ত্ত্ব`, `ম্ন`, `ফ্ল`), pre-kars (`ি`, `ে`, `ৈ`, `ো`, `ৌ`), post-kars, and ref (`র্`).
+* **Windows Bengali Typography Stack**: Integrates native Bengali font fallbacks (`Kalpurush`, `SolaimanLipi`, `Nikosh`, `Nirmala UI`, `Vrinda`), ensuring crisp, legible, and authentic Bengali reading.
+
+### ⚡ 3. High-Speed On-Demand Vector PDF Rasterization
+* **Instant First-Page & Thumbnail Cache**: Multi-page PDFs render page 1 and all miniature page thumbnails in milliseconds, loading subsequent full-resolution vector pages on demand when clicked.
+
+---
+
+# 🚀 RawView v3.9.2 Release Notes
+
+**RawView v3.9.2** delivers a major upgrade to Microsoft Office previewing — introducing native visual rendering for **Word documents (.docx, .doc, .rtf)** and **Excel spreadsheets (.xlsx, .xls, .csv)**. Instead of displaying static metadata overview cards, RawView now parses and renders real document pages, styled paragraphs, tables, and spreadsheet cell grids with near-instant responsiveness (~28ms–100ms).
+
+---
+
+## 🌟 What's New in v3.9.2
+
+### 📄 1. True Visual Word Document Rendering (.docx, .doc, .rtf)
+* **Real In-Document Content**: Parses `word/document.xml` to extract actual headings, paragraphs, bold/italic text runs, bullet lists, and tables with borders.
+* **Realistic A4 / US Letter Canvas**: Renders onto a clean 850×1100 px white document sheet featuring subtle paper borders, top Word Blue accent (`#2563EB`), and a descriptive footer.
+* **Legacy Format Support**: Seamlessly parses vintage Word 97–2003 (`.doc`) binary text streams and Rich Text Format (`.rtf`) into formatted document pages.
+
+### 📊 2. Authentic Excel Spreadsheet Grid View (.xlsx, .xls, .csv)
+* **Real Spreadsheet Grid**: Parses workbook sheets, shared strings, and worksheet rows/cells to render an interactive-looking 960×680 px spreadsheet grid.
+* **Column Coordinates & Row Numbers**: Standard Excel column letters (`A`, `B`, `C`, `D`...) and row numbers (`1`, `2`, `3`...) with subtle gridlines and alternating row shading (`#FFFFFF` / `#F9FAFB`).
+* **Intelligent Data Alignment**: Automatically formats numbers as right-aligned with proper cell padding, and text as left-aligned.
+* **Excel Brand Banner & Sheet Tabs**: Features a clean Excel green ribbon (`#107C41`) showing workbook filename, active sheet name, row/col stats, and bottom sheet tab indicators (`[Sheet1] [Sheet2]`).
+* **CSV & Legacy XLS**: Fully renders CSV data and legacy `.xls` files directly into the same clean spreadsheet grid.
+
+### 📽️ 3. PowerPoint Slide Canvas Renderer (.pptx, .ppt)
+* **Slide 1 Visual Presentation**: When files lack pre-saved thumbnail images, RawView automatically parses `ppt/slides/slide1.xml` to extract slide titles, subtitles, and key bullet points onto a 16:9 widescreen presentation canvas (960×540 px).
+
+---
+
 # 🚀 RawView v3.9.1 Release Notes
 
 **RawView v3.9.1** is a massive milestone release featuring a sleek tabbed Settings & Shortcuts interface with vector checkmarks, support for legacy Adobe Illustrator & Microsoft Office file formats, optional preview support for standard and web images (JPG, PNG, WebP, GIF, ICO, BMP - off by default), and pre-checked Windows boot autostart in the setup installer.

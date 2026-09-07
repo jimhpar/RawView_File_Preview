@@ -6,17 +6,26 @@ import re
 import base64
 import shutil
 import ctypes
+import zipfile
+import csv
+import xml.etree.ElementTree as ET
 from ctypes import wintypes, byref, c_void_p, POINTER, Structure, c_int, c_uint, c_wchar_p
 from pathlib import Path
 from PIL import Image, ImageOps
 import pypdfium2 as pdfium
 import pymupdf as fitz
 import rawpy
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QLinearGradient, QPen
-from PyQt6.QtCore import QByteArray, QSize, Qt
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QLinearGradient, QPen, QTextDocument, QFontMetrics
+from PyQt6.QtCore import QByteArray, QSize, Qt, QRect, QRectF
 from PyQt6.QtSvg import QSvgRenderer
 import comtypes
 from comtypes import GUID, IUnknown, COMMETHOD, HRESULT
+try:
+    from striprtf.striprtf import rtf_to_text
+except ImportError:
+    rtf_to_text = None
+
+from src.core.bijoy_converter import BijoyToUnicode
 
 # Check if Ghostscript is available on system
 GHOSTSCRIPT_AVAILABLE = bool(shutil.which("gswin64c") or shutil.which("gs") or shutil.which("gswin32c"))
@@ -83,8 +92,25 @@ class ShellImageFactory:
         return None
 
 class PreviewResult:
-    """Standardized preview result holding the rendered image/video and metadata."""
-    def __init__(self, qimage: QImage, width: int, height: int, mode: str, format_name: str, file_size: int, extra_info: str = "", is_video: bool = False, video_path: str = "", duration_ms: int = 0):
+    """Standardized preview result holding the rendered image/video and metadata with multi-page support."""
+    def __init__(
+        self,
+        qimage: QImage,
+        width: int,
+        height: int,
+        mode: str,
+        format_name: str,
+        file_size: int,
+        extra_info: str = "",
+        is_video: bool = False,
+        video_path: str = "",
+        duration_ms: int = 0,
+        pages: list = None,
+        page_thumbnails: list = None,
+        page_count: int = 1,
+        current_page_idx: int = 0,
+        page_loader = None
+    ):
         self.qimage = qimage
         self.width = width
         self.height = height
@@ -95,6 +121,42 @@ class PreviewResult:
         self.is_video = is_video
         self.video_path = video_path
         self.duration_ms = duration_ms
+        self.pages = pages if pages is not None else ([qimage] if qimage and not qimage.isNull() else [])
+        self.page_thumbnails = page_thumbnails if page_thumbnails is not None else []
+        self.page_count = max(page_count, len(self.pages), len(self.page_thumbnails), 1)
+        self.current_page_idx = current_page_idx
+        self.page_loader = page_loader
+
+    def get_page(self, idx: int) -> QImage:
+        """Returns the rendered full-scale QImage for the requested page index."""
+        if 0 <= idx < len(self.pages) and self.pages[idx] is not None and not self.pages[idx].isNull():
+            return self.pages[idx]
+        if self.page_loader:
+            try:
+                img = self.page_loader(idx)
+                if img and not img.isNull():
+                    while len(self.pages) <= idx:
+                        self.pages.append(None)
+                    self.pages[idx] = img
+                    return img
+            except Exception:
+                pass
+        if 0 <= idx < len(self.pages) and self.pages[idx] is not None:
+            return self.pages[idx]
+        return self.qimage
+
+    def get_thumbnail(self, idx: int) -> QImage:
+        """Returns the thumbnail QImage for the requested page index."""
+        if 0 <= idx < len(self.page_thumbnails) and self.page_thumbnails[idx] is not None and not self.page_thumbnails[idx].isNull():
+            return self.page_thumbnails[idx]
+        page_img = self.get_page(idx)
+        if page_img and not page_img.isNull():
+            thumb = page_img.scaled(72, 95, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            while len(self.page_thumbnails) <= idx:
+                self.page_thumbnails.append(None)
+            self.page_thumbnails[idx] = thumb
+            return thumb
+        return QImage()
 
     @property
     def formatted_size(self) -> str:
@@ -685,33 +747,66 @@ class EpsDecoder:
         )
 
 class PdfDecoder:
-    """High-speed vector PDF document rasterizer."""
+    """High-speed vector PDF document rasterizer with multi-page thumbnail support."""
     @staticmethod
     def decode(file_path: str, max_size: int = 1440) -> PreviewResult:
         size = os.path.getsize(file_path)
         pdf = pdfium.PdfDocument(file_path)
-        if len(pdf) == 0:
+        page_count = len(pdf)
+        if page_count == 0:
             raise RuntimeError("Empty PDF document.")
 
-        page = pdf[0]
-        page_w = int(page.get_width())
-        page_h = int(page.get_height())
+        page0 = pdf[0]
+        page_w = int(page0.get_width())
+        page_h = int(page0.get_height())
 
         scale = min(max_size / max(page_w, page_h, 1), 2.5)
         scale = max(scale, 1.0)
 
-        pil_img = page.render(scale=scale).to_pil()
-        qim = pil_to_qimage(pil_img)
-        page_str = f"Page 1 of {len(pdf)}" if len(pdf) > 1 else "1 Page"
+        pil_img0 = page0.render(scale=scale).to_pil()
+        qim0 = pil_to_qimage(pil_img0)
+
+        # Generate thumbnails for all pages (capped at 60 for instant rendering)
+        thumbs = []
+        max_thumbs = min(page_count, 60)
+        for i in range(max_thumbs):
+            try:
+                p = pdf[i]
+                pw = p.get_width()
+                t_scale = max(72.0 / max(pw, 1), 0.1)
+                t_pil = p.render(scale=t_scale).to_pil()
+                thumbs.append(pil_to_qimage(t_pil))
+            except Exception:
+                thumbs.append(None)
+
+        def load_pdf_page(idx: int) -> QImage:
+            try:
+                with pdfium.PdfDocument(file_path) as doc:
+                    if 0 <= idx < len(doc):
+                        p = doc[idx]
+                        pw, ph = int(p.get_width()), int(p.get_height())
+                        s = min(max_size / max(pw, ph, 1), 2.5)
+                        s = max(s, 1.0)
+                        return pil_to_qimage(p.render(scale=s).to_pil())
+            except Exception:
+                pass
+            return QImage()
+
+        pages_list = [qim0] + [None] * (page_count - 1)
+        page_str = f"Page 1 of {page_count}" if page_count > 1 else "1 Page"
 
         return PreviewResult(
-            qimage=qim,
+            qimage=qim0,
             width=page_w,
             height=page_h,
             mode="RGB (PDF Document)",
             format_name="PDF",
             file_size=size,
-            extra_info=page_str
+            extra_info=page_str,
+            pages=pages_list,
+            page_thumbnails=thumbs,
+            page_count=page_count,
+            page_loader=load_pdf_page
         )
 
 class TiffDecoder:
@@ -1019,6 +1114,595 @@ def extract_xls_sheets(data: bytes) -> list[str]:
         pass
     return sheets
 
+class WordDocumentRenderer:
+    """Renders Microsoft Word (.docx, .doc, .rtf) into realistic high-definition multi-page document views."""
+
+    FONT_STACK = '"Kalpurush", "SolaimanLipi", "Nikosh", "Nirmala UI", "Vrinda", "Segoe UI", Calibri, Arial, sans-serif'
+
+    @classmethod
+    def _parse_docx_to_pages(cls, file_path: str, max_pages: int = 40) -> tuple[list[str], str]:
+        """Parses word/document.xml to formatted HTML pages with paragraph, table, and Bijoy/Unicode support."""
+        title = Path(file_path).stem.replace("_", " ")
+        pages = []
+        cur_html = []
+
+        def finish_page():
+            if cur_html:
+                content = "".join(cur_html)
+                pages.append(
+                    f"<div style='font-family: {cls.FONT_STACK}; font-size: 11pt; color: #1E293B; line-height: 1.45;'>{content}</div>"
+                )
+                cur_html.clear()
+
+        try:
+            with zipfile.ZipFile(file_path, 'r') as z:
+                names = z.namelist()
+                if "word/document.xml" not in names:
+                    return [], title
+                xml_data = z.read("word/document.xml")
+        except Exception:
+            return [], title
+
+        try:
+            root = ET.fromstring(xml_data)
+        except Exception:
+            return [], title
+
+        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        body = root.find('w:body', ns)
+        if body is None:
+            return [], title
+
+        p_count_in_page = 0
+        for child in body:
+            if len(pages) >= max_pages:
+                break
+            tag = child.tag.split('}')[-1]
+
+            # Detect page breaks
+            has_break = (
+                child.find('.//w:lastRenderedPageBreak', ns) is not None or
+                any(br.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type') == 'page' for br in child.findall('.//w:br', ns))
+            )
+            # Automatic break if page has too many paragraphs
+            if (has_break or p_count_in_page >= 22) and cur_html:
+                finish_page()
+                p_count_in_page = 0
+
+            if tag == 'p':
+                runs_text = []
+                is_sutonny = False
+                is_bold_first = False
+                for r in child.findall('w:r', ns):
+                    rf = r.find('w:rPr/w:rFonts', ns)
+                    if rf is not None and any(BijoyToUnicode.is_sutonny_font(v) for v in rf.attrib.values()):
+                        is_sutonny = True
+                    t = r.find('w:t', ns)
+                    if t is not None and t.text:
+                        runs_text.append(t.text)
+                        if not is_bold_first and r.find('w:rPr/w:b', ns) is not None:
+                            is_bold_first = True
+
+                joined = "".join(runs_text)
+                if not joined.strip():
+                    continue
+
+                if is_sutonny or BijoyToUnicode.has_bijoy_markers(joined):
+                    p_str = BijoyToUnicode.convert(joined)
+                else:
+                    p_str = joined
+
+                p_str = p_str.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                if is_bold_first:
+                    p_str = f"<b>{p_str}</b>"
+
+                p_style = child.find('w:pPr/w:pStyle', ns)
+                val = p_style.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '').lower() if p_style is not None else ''
+
+                if 'heading1' in val or 'title' in val:
+                    cur_html.append(f"<h1 style='font-size: 16pt; color: #0F172A; margin: 8px 0 4px 0; font-weight: bold;'>{p_str}</h1>")
+                elif 'heading2' in val:
+                    cur_html.append(f"<h2 style='font-size: 13pt; color: #1E3A8A; margin: 6px 0 3px 0; font-weight: bold;'>{p_str}</h2>")
+                else:
+                    cur_html.append(f"<p style='margin: 4px 0;'>{p_str}</p>")
+                p_count_in_page += 1
+
+            elif tag == 'tbl':
+                cur_html.append("<table border='1' cellpadding='4' cellspacing='0' style='border-collapse: collapse; width: 100%; margin: 8px 0; border: 1px solid #CBD5E1;'>")
+                for tr in child.findall('w:tr', ns):
+                    cur_html.append("<tr>")
+                    for tc in tr.findall('w:tc', ns):
+                        cell_runs = []
+                        cell_sutonny = False
+                        for p in tc.findall('w:p', ns):
+                            for r in p.findall('w:r', ns):
+                                rf = r.find('w:rPr/w:rFonts', ns)
+                                if rf is not None and any(BijoyToUnicode.is_sutonny_font(v) for v in rf.attrib.values()):
+                                    cell_sutonny = True
+                                t = r.find('w:t', ns)
+                                if t is not None and t.text:
+                                    cell_runs.append(t.text)
+                        cell_joined = " ".join(cell_runs)
+                        if cell_sutonny or BijoyToUnicode.has_bijoy_markers(cell_joined):
+                            cell_conv = BijoyToUnicode.convert(cell_joined)
+                        else:
+                            cell_conv = cell_joined
+                        cell_str = cell_conv.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                        cur_html.append(f"<td style='border: 1px solid #CBD5E1; padding: 4px 8px; font-size: 10pt; color: #334155;'>{cell_str}</td>")
+                    cur_html.append("</tr>")
+                cur_html.append("</table>")
+                p_count_in_page += 3
+
+        finish_page()
+        return pages, title
+
+    @classmethod
+    def render(cls, file_path: str, max_size: int = 1440) -> PreviewResult | None:
+        try:
+            ext = Path(file_path).suffix.lower()
+            size = os.path.getsize(file_path)
+            pages_html = []
+            title = Path(file_path).stem.replace("_", " ")
+
+            if ext in (".docx", ".docm", ".dotx", ".dot"):
+                try:
+                    pages_html, title = cls._parse_docx_to_pages(file_path)
+                except Exception:
+                    pages_html = []
+
+            if not pages_html and ext in (".doc", ".dot"):
+                try:
+                    with open(file_path, "rb") as f:
+                        doc_bytes = f.read(1024 * 1024)
+                    plain = extract_doc_text(doc_bytes, max_chars=4000)
+                    if plain:
+                        if BijoyToUnicode.has_bijoy_markers(plain):
+                            plain = BijoyToUnicode.convert(plain)
+                        raw_paras = [p.strip() for p in plain.split("\n") if p.strip()]
+                        chunk_size = 20
+                        for i in range(0, len(raw_paras), chunk_size):
+                            chunk = raw_paras[i : i + chunk_size]
+                            paras_html = "".join([f"<p style='margin: 4px 0;'>{p}</p>" for p in chunk])
+                            pages_html.append(
+                                f"<div style='font-family: {cls.FONT_STACK}; font-size: 11pt; color: #1E293B; line-height: 1.45;'>{paras_html}</div>"
+                            )
+                except Exception:
+                    pass
+
+            if not pages_html and ext == ".rtf":
+                try:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        rtf_raw = f.read(512 * 1024)
+                    plain = ""
+                    if rtf_to_text:
+                        try:
+                            plain = rtf_to_text(rtf_raw)
+                        except Exception:
+                            plain = ""
+                    if not plain:
+                        plain = clean_rtf(rtf_raw, max_chars=4000)
+                    if plain:
+                        if BijoyToUnicode.has_bijoy_markers(plain):
+                            plain = BijoyToUnicode.convert(plain)
+                        raw_paras = [p.strip() for p in plain.split("\n") if p.strip()]
+                        chunk_size = 20
+                        for i in range(0, len(raw_paras), chunk_size):
+                            chunk = raw_paras[i : i + chunk_size]
+                            paras_html = "".join([f"<p style='margin: 4px 0;'>{p}</p>" for p in chunk])
+                            pages_html.append(
+                                f"<div style='font-family: {cls.FONT_STACK}; font-size: 11pt; color: #1E293B; line-height: 1.45;'>{paras_html}</div>"
+                            )
+                except Exception:
+                    pass
+
+            if not pages_html:
+                return None
+
+            total_pages = len(pages_html)
+            page_w, page_h = 850, 1100
+            rendered_pages = []
+            rendered_thumbs = []
+
+            for i, p_html in enumerate(pages_html):
+                img = QImage(page_w, page_h, QImage.Format.Format_RGB32)
+                img.fill(QColor("#FFFFFF"))
+
+                painter = QPainter(img)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+                # Outer paper border
+                painter.setPen(QColor("#CBD5E1"))
+                painter.drawRect(0, 0, page_w - 1, page_h - 1)
+
+                # Top Word Blue header accent
+                painter.fillRect(0, 0, page_w, 6, QColor("#2563EB"))
+
+                # QTextDocument layout
+                doc = QTextDocument()
+                doc.setDefaultStyleSheet("body { background-color: #FFFFFF; }")
+                margin = 48
+                content_w = page_w - (margin * 2)
+                content_h = page_h - (margin * 2) - 30
+                doc.setTextWidth(content_w)
+                doc.setHtml(p_html)
+
+                painter.save()
+                painter.translate(margin, margin)
+                doc.drawContents(painter, QRectF(0, 0, content_w, content_h))
+                painter.restore()
+
+                # Footer banner
+                painter.setPen(QPen(QColor("#E2E8F0"), 1))
+                painter.drawLine(margin, page_h - 35, page_w - margin, page_h - 35)
+                painter.setPen(QColor("#94A3B8"))
+                painter.setFont(QFont("Segoe UI", 9))
+                fname = Path(file_path).name
+                page_info = f"📄 {fname} | Page {i+1} of {total_pages}" if total_pages > 1 else f"📄 {fname}"
+                painter.drawText(margin, page_h - 28, content_w, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, page_info)
+                painter.drawText(margin, page_h - 28, content_w, 20, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "Word Document Preview")
+
+                painter.end()
+
+                thumb = img.scaled(72, 95, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                rendered_pages.append(img)
+                rendered_thumbs.append(thumb)
+
+            page_str = f"Page 1 of {total_pages}" if total_pages > 1 else "1 Page"
+
+            return PreviewResult(
+                qimage=rendered_pages[0],
+                width=page_w,
+                height=page_h,
+                mode="Document Page",
+                format_name=ext.lstrip(".").upper(),
+                file_size=size,
+                extra_info=page_str,
+                pages=rendered_pages,
+                page_thumbnails=rendered_thumbs,
+                page_count=total_pages
+            )
+        except Exception:
+            return None
+
+class ExcelSpreadsheetRenderer:
+    """Renders Microsoft Excel (.xlsx, .xls, .csv) into authentic Excel worksheet grids."""
+    
+    @staticmethod
+    def _col_idx_to_letter(idx: int) -> str:
+        res = ""
+        while idx >= 0:
+            res = chr(ord('A') + (idx % 26)) + res
+            idx = (idx // 26) - 1
+        return res
+
+    @staticmethod
+    def _split_cell_ref(ref: str) -> tuple[int, int]:
+        c_part = ''.join([ch for ch in ref if ch.isalpha()])
+        r_part = ''.join([ch for ch in ref if ch.isdigit()])
+        col_idx = 0
+        for char in c_part.upper():
+            col_idx = col_idx * 26 + (ord(char) - ord('A') + 1)
+        return col_idx - 1, (int(r_part) - 1) if r_part else 0
+
+    @classmethod
+    def _parse_xlsx_data(cls, file_path: str, max_rows: int = 35, max_cols: int = 10):
+        sheets = []
+        grid_data = {}
+        max_r, max_c = 0, 0
+        
+        with zipfile.ZipFile(file_path, 'r') as z:
+            names = z.namelist()
+            # 1. Sheets in workbook
+            if 'xl/workbook.xml' in names:
+                wb_root = ET.fromstring(z.read('xl/workbook.xml'))
+                for s in wb_root.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet'):
+                    s_name = s.attrib.get('name')
+                    if s_name:
+                        sheets.append(s_name)
+                        
+            # 2. Shared strings
+            shared_strings = []
+            if 'xl/sharedStrings.xml' in names:
+                s_root = ET.fromstring(z.read('xl/sharedStrings.xml'))
+                for si in s_root.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'):
+                    t_text = ''.join(t.text for t in si.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if t.text)
+                    shared_strings.append(t_text)
+                    
+            # 3. Sheet XML
+            sheet_path = 'xl/worksheets/sheet1.xml'
+            if sheet_path not in names:
+                sheets_in_zip = [n for n in names if n.startswith('xl/worksheets/sheet') and n.endswith('.xml')]
+                if sheets_in_zip:
+                    sheet_path = sorted(sheets_in_zip)[0]
+                    
+            if sheet_path in names:
+                sheet_root = ET.fromstring(z.read(sheet_path))
+                for row in sheet_root.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row'):
+                    r_num = row.attrib.get('r')
+                    r_idx = int(r_num) - 1 if r_num and r_num.isdigit() else 0
+                    if r_idx >= max_rows:
+                        continue
+                    for c in row.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
+                        ref = c.attrib.get('r', '')
+                        if ref:
+                            c_idx, _ = cls._split_cell_ref(ref)
+                        else:
+                            c_idx = 0
+                        if c_idx >= max_cols:
+                            continue
+                            
+                        cell_type = c.attrib.get('t')
+                        v = c.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
+                        val = v.text if v is not None and v.text else ''
+                        if cell_type == 's' and val.isdigit() and int(val) < len(shared_strings):
+                            val = shared_strings[int(val)]
+                        elif cell_type == 'b':
+                            val = 'TRUE' if val == '1' else 'FALSE'
+                        elif cell_type == 'inlineStr':
+                            is_elem = c.find('.//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
+                            if is_elem is not None and is_elem.text:
+                                val = is_elem.text
+                                
+                        if val:
+                            grid_data[(r_idx, c_idx)] = str(val).strip()
+                            if r_idx > max_r: max_r = r_idx
+                            if c_idx > max_c: max_c = c_idx
+                            
+        return sheets or ['Sheet1'], grid_data, max_r + 1, max_c + 1
+
+    @classmethod
+    def _parse_csv_data(cls, file_path: str, max_rows: int = 35, max_cols: int = 10):
+        grid_data = {}
+        max_r, max_c = 0, 0
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.reader(f)
+            for r_idx, row in enumerate(reader):
+                if r_idx >= max_rows:
+                    break
+                for c_idx, val in enumerate(row):
+                    if c_idx >= max_cols:
+                        break
+                    if val.strip():
+                        grid_data[(r_idx, c_idx)] = val.strip()
+                        if r_idx > max_r: max_r = r_idx
+                        if c_idx > max_c: max_c = c_idx
+        return ["CSV Data"], grid_data, max_r + 1, max_c + 1
+
+    @classmethod
+    def render(cls, file_path: str, max_size: int = 1440) -> PreviewResult | None:
+        try:
+            ext = Path(file_path).suffix.lower()
+            size = os.path.getsize(file_path)
+            
+            if ext in (".xlsx", ".xlsm", ".xltx", ".xlsb"):
+                sheets, grid_data, row_cnt, col_cnt = cls._parse_xlsx_data(file_path, max_rows=35, max_cols=10)
+            elif ext == ".csv":
+                sheets, grid_data, row_cnt, col_cnt = cls._parse_csv_data(file_path, max_rows=35, max_cols=10)
+            elif ext == ".xls":
+                with open(file_path, "rb") as f:
+                    xls_bytes = f.read(512 * 1024)
+                sheets = extract_xls_sheets(xls_bytes) or ["Sheet1"]
+                grid_data = {}
+                row_cnt, col_cnt = 0, 0
+            else:
+                return None
+                
+            if not grid_data and ext != ".xls":
+                return None
+                
+            display_rows = max(row_cnt, 18)
+            display_cols = max(col_cnt, 7)
+            display_cols = min(display_cols, 10)
+            display_rows = min(display_rows, 35)
+            
+            w, h = 960, 680
+            img = QImage(w, h, QImage.Format.Format_RGB32)
+            img.fill(QColor("#FFFFFF"))
+            
+            painter = QPainter(img)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            
+            # 1. Top Excel Brand Header Banner (38px)
+            painter.fillRect(0, 0, w, 38, QColor("#107C41"))
+            painter.setPen(QColor("#FFFFFF"))
+            painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+            fname = Path(file_path).name
+            active_sheet = sheets[0] if sheets else "Sheet1"
+            painter.drawText(16, 25, f"📊 {fname} — {active_sheet}")
+            
+            painter.setPen(QColor("#A7F3D0"))
+            painter.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+            dim_meta = f"{row_cnt} Rows × {col_cnt} Cols" if (row_cnt and col_cnt) else "Excel Spreadsheet"
+            painter.drawText(w - 200, 24, 184, 18, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, dim_meta)
+            
+            # 2. Dynamic Column Widths
+            row_num_col_w = 46
+            avail_w = w - row_num_col_w - 2
+            base_col_w = avail_w // display_cols
+            col_widths = [base_col_w] * display_cols
+            
+            # 3. Column Coordinate Header Row (A, B, C, D...)
+            header_y = 38
+            header_h = 26
+            painter.fillRect(0, header_y, w, header_h, QColor("#F3F4F6"))
+            painter.fillRect(0, header_y, row_num_col_w, header_h, QColor("#E5E7EB"))
+            painter.setPen(QPen(QColor("#D1D5DB"), 1))
+            painter.drawLine(0, header_y + header_h, w, header_y + header_h)
+            
+            x = row_num_col_w
+            for c in range(display_cols):
+                cw = col_widths[c]
+                painter.setPen(QPen(QColor("#D1D5DB"), 1))
+                painter.drawLine(x, header_y, x, header_y + header_h)
+                painter.setPen(QColor("#4B5563"))
+                painter.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+                c_label = cls._col_idx_to_letter(c)
+                painter.drawText(x, header_y, cw, header_h, Qt.AlignmentFlag.AlignCenter, c_label)
+                x += cw
+                
+            # 4. Grid Rows
+            y = header_y + header_h
+            row_h = 24
+            
+            for r in range(display_rows):
+                bg_color = QColor("#FFFFFF") if r % 2 == 0 else QColor("#F9FAFB")
+                painter.fillRect(0, y, w, row_h, bg_color)
+                
+                # Row number label
+                painter.fillRect(0, y, row_num_col_w, row_h, QColor("#F3F4F6"))
+                painter.setPen(QPen(QColor("#D1D5DB"), 1))
+                painter.drawLine(0, y + row_h, w, y + row_h)
+                painter.drawLine(row_num_col_w, y, row_num_col_w, y + row_h)
+                
+                painter.setPen(QColor("#6B7280"))
+                painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Normal))
+                painter.drawText(0, y, row_num_col_w, row_h, Qt.AlignmentFlag.AlignCenter, str(r + 1))
+                
+                # Cell contents
+                x = row_num_col_w
+                for c in range(display_cols):
+                    cw = col_widths[c]
+                    painter.setPen(QPen(QColor("#E5E7EB"), 1))
+                    painter.drawLine(x + cw, y, x + cw, y + row_h)
+                    
+                    val = grid_data.get((r, c), "")
+                    if val:
+                        painter.setPen(QColor("#111827"))
+                        painter.setFont(QFont("Segoe UI", 9))
+                        is_num = val.replace(".", "", 1).replace(",", "").replace("-", "").isdigit()
+                        align = Qt.AlignmentFlag.AlignRight if is_num else Qt.AlignmentFlag.AlignLeft
+                        text_rect = QRect(x + 6, y, cw - 12, row_h)
+                        painter.drawText(text_rect, align | Qt.AlignmentFlag.AlignVCenter, val)
+                    x += cw
+                    
+                y += row_h
+                if y > h - 35:
+                    break
+                    
+            # 5. Bottom Sheet Tabs Bar (28px)
+            tab_y = h - 28
+            painter.fillRect(0, tab_y, w, 28, QColor("#F3F4F6"))
+            painter.setPen(QPen(QColor("#D1D5DB"), 1))
+            painter.drawLine(0, tab_y, w, tab_y)
+            
+            tab_x = 12
+            for idx, sname in enumerate(sheets[:4]):
+                tab_w = max(80, len(sname) * 8 + 24)
+                is_active = (idx == 0)
+                tab_bg = QColor("#FFFFFF") if is_active else QColor("#E5E7EB")
+                painter.fillRect(tab_x, tab_y + 2, tab_w, 24, tab_bg)
+                painter.setPen(QPen(QColor("#107C41") if is_active else QColor("#D1D5DB"), 1.5 if is_active else 1))
+                painter.drawRect(tab_x, tab_y + 2, tab_w, 24)
+                if is_active:
+                    painter.fillRect(tab_x, tab_y + 24, tab_w, 2, QColor("#107C41"))
+                    
+                painter.setPen(QColor("#107C41") if is_active else QColor("#4B5563"))
+                painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold if is_active else QFont.Weight.Normal))
+                painter.drawText(tab_x, tab_y + 2, tab_w, 24, Qt.AlignmentFlag.AlignCenter, sname)
+                tab_x += tab_w + 6
+                
+            painter.end()
+            
+            return PreviewResult(
+                qimage=img,
+                width=w,
+                height=h,
+                mode="Spreadsheet Grid",
+                format_name=ext.lstrip(".").upper(),
+                file_size=size,
+                extra_info=f"{active_sheet} ({row_cnt} rows)" if row_cnt else "Excel Worksheet"
+            )
+        except Exception:
+            return None
+
+class PowerPointSlideRenderer:
+    """Renders Microsoft PowerPoint (.pptx, .ppt) slide canvas when no embedded thumbnail exists."""
+    
+    @classmethod
+    def render(cls, file_path: str, max_size: int = 1440) -> PreviewResult | None:
+        try:
+            ext = Path(file_path).suffix.lower()
+            size = os.path.getsize(file_path)
+            
+            slide_texts = []
+            total_slides = 1
+            if ext in (".pptx", ".pptm", ".ppsx", ".potx"):
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    names = z.namelist()
+                    slides = [n for n in names if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
+                    total_slides = max(len(slides), 1)
+                    
+                    if "ppt/slides/slide1.xml" in names:
+                        root = ET.fromstring(z.read("ppt/slides/slide1.xml"))
+                        for p in root.iter('{http://schemas.openxmlformats.org/drawingml/2006/main}p'):
+                            t_line = "".join(t.text for t in p.iter('{http://schemas.openxmlformats.org/drawingml/2006/main}t') if t.text)
+                            if t_line.strip():
+                                slide_texts.append(t_line.strip())
+                                
+            if not slide_texts:
+                return None
+                
+            # Render 16:9 Presentation Slide Canvas (960 x 540 px)
+            w, h = 960, 540
+            img = QImage(w, h, QImage.Format.Format_RGB32)
+            img.fill(QColor("#0F172A"))
+            
+            painter = QPainter(img)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            
+            # Slide Header Pill Badge
+            painter.setBrush(QColor("#1E293B"))
+            painter.setPen(QPen(QColor("#EA580C"), 1.5))
+            painter.drawRoundedRect(40, 32, 220, 32, 6, 6)
+            painter.setPen(QColor("#FB923C"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            painter.drawText(40, 32, 220, 32, Qt.AlignmentFlag.AlignCenter, f"📽️ Slide 1 of {total_slides}")
+            
+            # Title
+            title_text = slide_texts[0]
+            painter.setPen(QColor("#F8FAFC"))
+            painter.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+            painter.drawText(40, 80, w - 80, 50, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title_text)
+            
+            # Accent Divider Line
+            painter.fillRect(40, 138, 120, 4, QColor("#EA580C"))
+            
+            # Subtitle / Body bullet items
+            y_pos = 160
+            for item in slide_texts[1:8]:
+                painter.setPen(QColor("#EA580C"))
+                painter.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+                painter.drawText(44, y_pos, 20, 26, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "•")
+                
+                painter.setPen(QColor("#E2E8F0"))
+                painter.setFont(QFont("Segoe UI", 12))
+                painter.drawText(66, y_pos, w - 120, 26, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, item[:90])
+                y_pos += 34
+                if y_pos > h - 60:
+                    break
+                    
+            # Footer
+            painter.setPen(QColor("#64748B"))
+            painter.setFont(QFont("Segoe UI", 9))
+            fname = Path(file_path).name
+            painter.drawText(40, h - 35, w - 80, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"PowerPoint Presentation • {fname}")
+            
+            painter.end()
+            return PreviewResult(
+                qimage=img,
+                width=w,
+                height=h,
+                mode="Slide Canvas",
+                format_name="PPTX",
+                file_size=size,
+                extra_info=f"Slide 1 of {total_slides}"
+            )
+        except Exception:
+            return None
+
 class OfficeDocDecoder:
     """Ultra-fast decoder for Microsoft Word, Excel, PowerPoint, RTF, and CSV documents."""
     
@@ -1174,7 +1858,6 @@ class OfficeDocDecoder:
         # 1. Try OpenXML ZIP thumbnail extraction for .docx, .xlsx, .pptx
         if ext in (".docx", ".xlsx", ".pptx", ".docm", ".dotx", ".xlsm", ".xltx", ".pptm", ".ppsx", ".potx"):
             try:
-                import zipfile
                 with zipfile.ZipFile(file_path, 'r') as z:
                     names = z.namelist()
                     # A. Embedded document thumbnail
@@ -1193,26 +1876,9 @@ class OfficeDocDecoder:
                                     extra_info="OpenXML Document"
                                 )
                     
-                    # B. Check for first slide/document embedded graphic
-                    media_files = [n for n in names if (n.startswith("ppt/media/") or n.startswith("word/media/") or n.startswith("xl/media/")) and n.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
-                    if media_files:
-                        first_img_bytes = z.read(sorted(media_files)[0])
-                        qim = QImage.fromData(first_img_bytes)
-                        if not qim.isNull() and qim.width() > 60 and qim.height() > 60:
-                            return PreviewResult(
-                                qimage=qim,
-                                width=qim.width(),
-                                height=qim.height(),
-                                mode="RGB (Slide Visual)",
-                                format_name=fmt_name,
-                                file_size=size,
-                                extra_info="Embedded Media"
-                            )
-
-                    # C. Metadata parsing
+                    # B. Check for metadata to populate fallback card if needed later
                     if "docProps/app.xml" in names:
                         app_xml = z.read("docProps/app.xml").decode("utf-8", errors="ignore")
-                        import xml.etree.ElementTree as ET
                         root = ET.fromstring(app_xml)
                         for elem in root.iter():
                             tag = elem.tag.split("}")[-1]
@@ -1229,7 +1895,6 @@ class OfficeDocDecoder:
                                     
                     if "docProps/core.xml" in names:
                         core_xml = z.read("docProps/core.xml").decode("utf-8", errors="ignore")
-                        import xml.etree.ElementTree as ET
                         root = ET.fromstring(core_xml)
                         for elem in root.iter():
                             tag = elem.tag.split("}")[-1]
@@ -1240,44 +1905,46 @@ class OfficeDocDecoder:
             except Exception:
                 pass
 
-        # 2. Extract text/metadata from legacy .doc, .rtf, .xls, .csv
-        elif ext in (".doc", ".dot"):
+        # 2. Native Visual Document, Spreadsheet, & Slide Renderers
+        # A. Word Documents (.docx, .doc, .rtf, .docm, .dotx, .dot)
+        if ext in (".docx", ".doc", ".rtf", ".docm", ".dotx", ".dot"):
+            word_res = WordDocumentRenderer.render(file_path, max_size)
+            if word_res:
+                return word_res
+
+        # B. Excel Spreadsheets (.xlsx, .xls, .csv, .xlsm, .xlsb, .xltx)
+        elif ext in (".xlsx", ".xls", ".csv", ".xlsm", ".xlsb", ".xltx"):
+            excel_res = ExcelSpreadsheetRenderer.render(file_path, max_size)
+            if excel_res:
+                return excel_res
+
+        # C. PowerPoint Presentations (.pptx, .ppt, .pptm, .ppsx, .potx)
+        elif ext in (".pptx", ".ppt", ".pptm", ".ppsx", ".potx"):
+            # Check embedded media graphic first (e.g. slide 1 image)
             try:
-                with open(file_path, "rb") as f:
-                    doc_bytes = f.read(256 * 1024)
-                meta["text_preview"] = extract_doc_text(doc_bytes)
-                meta["title"] = Path(file_path).stem.replace("_", " ")
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    names = z.namelist()
+                    media_files = [n for n in names if n.startswith("ppt/media/") and n.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+                    if media_files:
+                        first_img_bytes = z.read(sorted(media_files)[0])
+                        qim = QImage.fromData(first_img_bytes)
+                        if not qim.isNull() and qim.width() > 60 and qim.height() > 60:
+                            return PreviewResult(
+                                qimage=qim,
+                                width=qim.width(),
+                                height=qim.height(),
+                                mode="RGB (Slide Visual)",
+                                format_name=fmt_name,
+                                file_size=size,
+                                extra_info="Embedded Media"
+                            )
             except Exception:
                 pass
-        elif ext in (".rtf",):
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    rtf_content = f.read(65536)
-                meta["text_preview"] = clean_rtf(rtf_content)[:120]
-                meta["title"] = Path(file_path).stem.replace("_", " ")
-            except Exception:
-                pass
-        elif ext in (".xls",):
-            try:
-                with open(file_path, "rb") as f:
-                    xls_bytes = f.read(512 * 1024)
-                sheets = extract_xls_sheets(xls_bytes)
-                if sheets:
-                    meta["sheets"] = ", ".join(sheets[:5])
-                meta["title"] = Path(file_path).stem.replace("_", " ")
-            except Exception:
-                pass
-        elif ext in (".csv",):
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    lines = [f.readline().strip() for _ in range(3)]
-                valid_lines = [l for l in lines if l]
-                if valid_lines:
-                    meta["text_preview"] = " | ".join(valid_lines[0].split(",")[:4])
-                meta["title"] = Path(file_path).stem.replace("_", " ")
-            except Exception:
-                pass
-                
+
+            ppt_res = PowerPointSlideRenderer.render(file_path, max_size)
+            if ppt_res:
+                return ppt_res
+
         # 3. Try Windows Shell Image Factory (Cached thumbnail ONLY, never generic icon)
         shell_qim = ShellImageFactory.get_thumbnail(file_path, max_size, thumbnail_only=True)
         if shell_qim and not shell_qim.isNull() and shell_qim.width() > 20:
