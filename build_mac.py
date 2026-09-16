@@ -52,11 +52,15 @@ def build():
         str(spec_path)
     ]
     res = subprocess.run(pyinstaller_cmd, cwd=str(BASE_DIR))
-    if res.returncode != 0 or not APP_BUNDLE.exists():
+    app_bundle = APP_BUNDLE
+    if not app_bundle.exists() and (DIST_DIR / "RawView" / "RawView.app").exists():
+        app_bundle = DIST_DIR / "RawView" / "RawView.app"
+
+    if res.returncode != 0 or not app_bundle.exists():
         print("\nERROR: PyInstaller failed to compile RawView.app")
         sys.exit(1)
 
-    print(f"\nSUCCESS: App bundle created at: {APP_BUNDLE}")
+    print(f"\nSUCCESS: App bundle created at: {app_bundle}")
 
     # 4. Create DMG Package using hdiutil
     dmg_name = f"RawView_{APP_VERSION}.dmg"
@@ -69,7 +73,7 @@ def build():
     os.makedirs(dmg_staging, exist_ok=True)
 
     # Copy App Bundle to staging
-    shutil.copytree(APP_BUNDLE, dmg_staging / "RawView.app", symlinks=True)
+    shutil.copytree(app_bundle, dmg_staging / "RawView.app", symlinks=True)
 
     # Create Applications alias
     app_link = dmg_staging / "Applications"

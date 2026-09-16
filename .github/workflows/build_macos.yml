@@ -1,12 +1,15 @@
 name: Build macOS DMG
 
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub Actions web UI with 1 click
+  workflow_dispatch:
   push:
     branches:
       - main
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build-macos:
@@ -21,7 +24,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Install macOS Dependencies
         run: |
