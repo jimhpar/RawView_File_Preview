@@ -5,14 +5,30 @@ from PIL import Image
 def generate_icns():
     project_root = Path(__file__).resolve().parent
     assets_dir = project_root / "assets"
-    source_png = assets_dir / "icon_transparent.png"
-    if not source_png.exists():
-        source_png = assets_dir / "source_logo.png"
-
     output_icns = assets_dir / "app_icon.icns"
-    print(f"Generating macOS ICNS from: {source_png}")
 
-    base = Image.open(source_png).convert("RGBA")
+    if output_icns.exists() and output_icns.stat().st_size > 1000:
+        print(f"app_icon.icns already exists: {output_icns} ({output_icns.stat().st_size} bytes)")
+        return
+
+    candidates = [
+        assets_dir / "icon_transparent.png",
+        assets_dir / "source_logo.png",
+        assets_dir / "app_icon_256.png",
+        assets_dir / "app_icon.ico",
+    ]
+    source_img = None
+    for c in candidates:
+        if c.exists():
+            source_img = c
+            break
+
+    if not source_img:
+        print("Notice: No icon image found to generate ICNS.")
+        return
+
+    print(f"Generating macOS ICNS from: {source_img}")
+    base = Image.open(source_img).convert("RGBA")
     
     # Fit into a 512x512 canvas maintaining aspect ratio
     canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
@@ -22,11 +38,7 @@ def generate_icns():
     canvas.paste(base, (x, y), base)
 
     # Save as multi-resolution macOS ICNS icon
-    canvas.save(
-        output_icns,
-        format="ICNS",
-        sizes=[(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512)]
-    )
+    canvas.save(output_icns, format="ICNS")
     print(f"Successfully generated: {output_icns} ({output_icns.stat().st_size} bytes)")
 
 if __name__ == "__main__":

@@ -34,6 +34,9 @@ test_*.py
 ai_test_*.jpg
 ai_xmp_*.jpg
 
+# Whitelist application assets
+!assets/*
+
 # Admin & Private Keygen
 admin_keygen*
 keygen*
