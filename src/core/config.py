@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 from pathlib import Path
 
@@ -105,7 +106,12 @@ PAYMENT_INFO = {
 }
 
 # Directories
-APPDATA_DIR = Path(os.environ.get("APPDATA", os.path.expanduser("~"))) / "RawView"
+if sys.platform == "darwin":
+    APPDATA_DIR = Path.home() / "Library" / "Application Support" / "RawView"
+elif sys.platform == "win32":
+    APPDATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "RawView"
+else:
+    APPDATA_DIR = Path.home() / ".config" / "RawView"
 CACHE_DIR = APPDATA_DIR / "cache"
 CONFIG_FILE = APPDATA_DIR / "config.json"
 

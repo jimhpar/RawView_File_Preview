@@ -2,26 +2,52 @@ import os
 import sys
 import time
 import json
-import winreg
+import re
 import hmac
 import hashlib
 import platform
 from pathlib import Path
 from src.core.config import APPDATA_DIR
 
+if sys.platform == "win32":
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+else:
+    winreg = None
+
 LICENSE_FILE = APPDATA_DIR / "license.json"
 MASTER_SECRET = b"RAWVIEW_PRO_OFFLINE_SECRET_KEY_BLACKBOX_2026_V2"
 TRIAL_DURATION_DAYS = 7
 
 def get_raw_hardware_guid() -> str:
-    """Extracts Windows MachineGuid or hardware signature."""
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
-            guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-            if guid:
-                return str(guid).strip().lower()
-    except Exception:
-        pass
+    """Extracts Windows MachineGuid, macOS Hardware UUID, or hardware signature."""
+    if sys.platform == "darwin":
+        try:
+            import subprocess
+            out = subprocess.check_output(["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], timeout=2.0).decode("utf-8", errors="ignore")
+            m = re.search(r'"IOPlatformUUID"\s*=\s*"([^"]+)"', out)
+            if m:
+                return m.group(1).strip().lower()
+        except Exception:
+            pass
+        try:
+            import subprocess
+            out = subprocess.check_output(["sysctl", "-n", "hw.uuid"], timeout=2.0).decode("utf-8", errors="ignore").strip()
+            if out:
+                return out.lower()
+        except Exception:
+            pass
+
+    elif sys.platform == "win32" and winreg:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
+                guid, _ = winreg.QueryValueEx(key, "MachineGuid")
+                if guid:
+                    return str(guid).strip().lower()
+        except Exception:
+            pass
 
     # Fallback to system node name and processor
     node = platform.node() or "RAWVIEW_DEFAULT_NODE"

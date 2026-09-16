@@ -15,6 +15,8 @@ dist/
 dist_installer/
 dist_admin/
 *.spec
+!RawView.spec
+!RawView_mac.spec
 
 # Temp and OS files
 .DS_Store

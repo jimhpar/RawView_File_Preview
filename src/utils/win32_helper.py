@@ -1,9 +1,5 @@
-import ctypes
-from ctypes import wintypes
 from PyQt6.QtCore import QPoint, QRect
 from PyQt6.QtGui import QGuiApplication
-
-user32 = ctypes.windll.user32
 
 def calculate_popup_position(cursor_x: int, cursor_y: int, popup_w: int, popup_h: int) -> QPoint:
     """

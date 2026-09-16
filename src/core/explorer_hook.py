@@ -1,19 +1,30 @@
 import os
 import sys
+import time
 import re
 import urllib.parse
 from pathlib import Path
-import ctypes
-from ctypes import wintypes
-import win32gui
-import win32con
-import win32api
-import pythoncom
-import win32com.client
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QPoint
 from PyQt6.QtGui import QCursor
-import uiautomation as auto
 from .config import SUPPORTED_EXTENSIONS
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+WINDOWS_HOOK_AVAILABLE = False
+
+if IS_WINDOWS:
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import win32gui
+        import win32con
+        import win32api
+        import pythoncom
+        import win32com.client
+        import uiautomation as auto
+        WINDOWS_HOOK_AVAILABLE = True
+    except Exception:
+        WINDOWS_HOOK_AVAILABLE = False
 
 def normalize_str(s: str) -> str:
     """Strips whitespace, underscores, hyphens, and dots for fuzzy matching across line-wrapped labels."""
@@ -202,6 +213,9 @@ class ExplorerHoverMonitor(QObject):
         self.space_key_down = False
         self.esc_key_down = False
         self.ctrl_backtick_down = False
+        self.f2_key_down = False
+        self.mouse_click_down = False
+        self.preview_hud_rect_provider = None
         
         # Desktop candidate folders
         self.desktop_paths = [
@@ -239,6 +253,60 @@ class ExplorerHoverMonitor(QObject):
         self.preview_is_pinned = pinned
 
     def _on_tick(self):
+        if IS_MACOS or not WINDOWS_HOOK_AVAILABLE:
+            self._on_tick_macos()
+            return
+        self._on_tick_windows()
+
+    def _get_mac_finder_file(self) -> str:
+        """Retrieves selected file path from macOS Finder via AppleScript."""
+        try:
+            import subprocess
+            script = 'tell application "Finder" to set sel to (selection as alias list)\nif sel is not {} then return POSIX path of (item 1 of sel)'
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=0.3)
+            if res.returncode == 0:
+                p = res.stdout.strip()
+                if p and os.path.isfile(p):
+                    return p
+        except Exception:
+            pass
+        return ""
+
+    def _on_tick_macos(self):
+        if not self.enabled:
+            if self.is_hover_active:
+                self._clear_hover()
+            return
+
+        cur_pos = QCursor.pos()
+        x, y = cur_pos.x(), cur_pos.y()
+        now = int(time.monotonic() * 1000)
+
+        if cur_pos != self.last_pos:
+            self.last_pos = cur_pos
+            self.settle_start_time = now
+            self._last_resolved_pos = QPoint(-1, -1)
+            if self.preview_is_pinned:
+                return
+            return
+
+        dwell_ms = now - self.settle_start_time
+        if dwell_ms >= self.hover_delay_ms:
+            if cur_pos != getattr(self, "_last_resolved_pos", QPoint(-1, -1)):
+                self._last_resolved_pos = cur_pos
+                file_path = self._get_mac_finder_file()
+                if file_path:
+                    ext = Path(file_path).suffix.lower()
+                    if ext in self.supported_exts_set:
+                        if self.active_file_path != file_path:
+                            self.active_file_path = file_path
+                            self.is_hover_active = True
+                            self.file_hovered.emit(file_path, x, y)
+                        return
+                if self.is_hover_active and not self.preview_is_pinned:
+                    self._clear_hover()
+
+    def _on_tick_windows(self):
         # Global Key Interceptions when preview is active or visible or pinned
         if self.is_hover_active or self.preview_is_visible or self.preview_is_pinned:
             # Spacebar detection (0x20 = VK_SPACE)
@@ -276,7 +344,7 @@ class ExplorerHoverMonitor(QObject):
 
         cur_pos = QCursor.pos()
         x, y = cur_pos.x(), cur_pos.y()
-        now = ctypes.windll.kernel32.GetTickCount()
+        now = int(time.monotonic() * 1000)
 
         if cur_pos != self.last_pos:
             # Cursor is in motion

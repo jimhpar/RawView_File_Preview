@@ -1,15 +1,14 @@
 import os
+import sys
 import io
 import struct
 import gzip
 import re
 import base64
 import shutil
-import ctypes
 import zipfile
 import csv
 import xml.etree.ElementTree as ET
-from ctypes import wintypes, byref, c_void_p, POINTER, Structure, c_int, c_uint, c_wchar_p
 from pathlib import Path
 from PIL import Image, ImageOps
 import pypdfium2 as pdfium
@@ -18,8 +17,6 @@ import rawpy
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QLinearGradient, QPen, QTextDocument, QFontMetrics
 from PyQt6.QtCore import QByteArray, QSize, Qt, QRect, QRectF
 from PyQt6.QtSvg import QSvgRenderer
-import comtypes
-from comtypes import GUID, IUnknown, COMMETHOD, HRESULT
 try:
     from striprtf.striprtf import rtf_to_text
 except ImportError:
@@ -30,26 +27,39 @@ from src.core.bijoy_converter import BijoyToUnicode
 # Check if Ghostscript is available on system
 GHOSTSCRIPT_AVAILABLE = bool(shutil.which("gswin64c") or shutil.which("gs") or shutil.which("gswin32c"))
 
-# Windows Shell Thumbnail Provider Interface Definitions
-class _SIZE(Structure):
-    _fields_ = [('cx', c_int), ('cy', c_int)]
+# Windows Shell Thumbnail Provider Interface Definitions (Windows-only)
+IS_WINDOWS = sys.platform == "win32"
+WINDOWS_SHELL_AVAILABLE = False
 
-class _IShellItemImageFactory(IUnknown):
-    _iid_ = GUID('{bcc18b79-ba16-442f-80c4-8a59c30c463b}')
-    _methods_ = [
-        COMMETHOD([], HRESULT, 'GetImage',
-                  (['in'], _SIZE, 'size'),
-                  (['in'], c_uint, 'flags'),
-                  (['out'], POINTER(wintypes.HBITMAP), 'phbm'))
-    ]
+if IS_WINDOWS:
+    try:
+        import ctypes
+        from ctypes import wintypes, byref, c_void_p, POINTER, Structure, c_int, c_uint, c_wchar_p
+        import comtypes
+        from comtypes import GUID, IUnknown, COMMETHOD, HRESULT
 
-_SHCreateItemFromParsingName = ctypes.windll.shell32.SHCreateItemFromParsingName
-_SHCreateItemFromParsingName.argtypes = [c_wchar_p, c_void_p, POINTER(GUID), POINTER(c_void_p)]
-_SHCreateItemFromParsingName.restype = HRESULT
+        class _SIZE(Structure):
+            _fields_ = [('cx', c_int), ('cy', c_int)]
 
-_DeleteObject = ctypes.windll.gdi32.DeleteObject
-_DeleteObject.argtypes = [wintypes.HGDIOBJ]
-_DeleteObject.restype = wintypes.BOOL
+        class _IShellItemImageFactory(IUnknown):
+            _iid_ = GUID('{bcc18b79-ba16-442f-80c4-8a59c30c463b}')
+            _methods_ = [
+                COMMETHOD([], HRESULT, 'GetImage',
+                          (['in'], _SIZE, 'size'),
+                          (['in'], c_uint, 'flags'),
+                          (['out'], POINTER(wintypes.HBITMAP), 'phbm'))
+            ]
+
+        _SHCreateItemFromParsingName = ctypes.windll.shell32.SHCreateItemFromParsingName
+        _SHCreateItemFromParsingName.argtypes = [c_wchar_p, c_void_p, POINTER(GUID), POINTER(c_void_p)]
+        _SHCreateItemFromParsingName.restype = HRESULT
+
+        _DeleteObject = ctypes.windll.gdi32.DeleteObject
+        _DeleteObject.argtypes = [wintypes.HGDIOBJ]
+        _DeleteObject.restype = wintypes.BOOL
+        WINDOWS_SHELL_AVAILABLE = True
+    except Exception:
+        WINDOWS_SHELL_AVAILABLE = False
 
 class ShellImageFactory:
     """Hardware-accelerated Windows Shell image provider (utilizing native Adobe/system shell handlers)."""
@@ -58,7 +68,10 @@ class ShellImageFactory:
         """
         Extracts native Windows shell thumbnail using IShellItemImageFactory.
         thumbnail_only=True (default) ensures we NEVER extract generic file icons.
+        Returns None on non-Windows platforms.
         """
+        if not WINDOWS_SHELL_AVAILABLE:
+            return None
         co_inited = False
         factory = None
         try:

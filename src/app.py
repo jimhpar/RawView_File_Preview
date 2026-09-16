@@ -1,8 +1,19 @@
 import os
 import sys
 import argparse
-import ctypes
-from ctypes import wintypes
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+
+if IS_WINDOWS:
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+else:
+    ctypes = None
+    wintypes = None
+    kernel32 = None
+    user32 = None
 from pathlib import Path
 
 # Add project root to sys.path
@@ -26,9 +37,6 @@ from src.core.icons import create_app_icon
 from src.ui.preview_window import FloatingPreviewHUD
 from src.ui.tray_icon import TrayManager
 from src.ui.status_hud import StatusToastHUD
-
-kernel32 = ctypes.windll.kernel32
-user32 = ctypes.windll.user32
 
 class GlobalHotkeyFilter(QAbstractNativeEventFilter, QObject):
     hotkey_triggered = pyqtSignal()
@@ -202,14 +210,18 @@ class RawViewApp(QObject):
 
         # 4. Native OS Global Hotkey (Ctrl + `) with Windows Kernel Filter for 0ms response
         self.hotkey_id = 9876
-        self.hotkey_filter = GlobalHotkeyFilter(hotkey_id=self.hotkey_id)
-        self.hotkey_filter.hotkey_triggered.connect(self._on_toggle_enabled)
-        QApplication.instance().installNativeEventFilter(self.hotkey_filter)
+        if IS_WINDOWS and user32:
+            self.hotkey_filter = GlobalHotkeyFilter(hotkey_id=self.hotkey_id)
+            self.hotkey_filter.hotkey_triggered.connect(self._on_toggle_enabled)
+            QApplication.instance().installNativeEventFilter(self.hotkey_filter)
 
-        # VK_OEM_3 = 0xC0 (` / ~ key), MOD_CONTROL = 0x0002, MOD_NOREPEAT = 0x4000
-        self.hotkey_registered = bool(
-            user32.RegisterHotKey(None, self.hotkey_id, 0x0002 | 0x4000, 0xC0)
-        )
+            # VK_OEM_3 = 0xC0 (` / ~ key), MOD_CONTROL = 0x0002, MOD_NOREPEAT = 0x4000
+            self.hotkey_registered = bool(
+                user32.RegisterHotKey(None, self.hotkey_id, 0x0002 | 0x4000, 0xC0)
+            )
+        else:
+            self.hotkey_filter = None
+            self.hotkey_registered = False
 
         # Start Hover Monitoring
         self.hover_monitor.start()
@@ -352,7 +364,7 @@ class RawViewApp(QObject):
         )
 
     def shutdown(self):
-        if getattr(self, "hotkey_registered", False):
+        if getattr(self, "hotkey_registered", False) and user32:
             try:
                 user32.UnregisterHotKey(None, self.hotkey_id)
             except Exception:
@@ -366,16 +378,32 @@ class RawViewApp(QObject):
         self.preview_hud.close()
         QApplication.quit()
 
+_lock_file_handle = None
+
 def check_single_instance() -> bool:
-    """Uses a named Win32 mutex to enforce a single running instance."""
-    mutex = kernel32.CreateMutexW(None, True, APP_MUTEX_NAME)
-    last_error = kernel32.GetLastError()
-    # ERROR_ALREADY_EXISTS = 183
-    if last_error == 183:
-        if mutex:
-            kernel32.CloseHandle(mutex)
-        return False
-    return True
+    """Enforces a single running instance via Win32 named mutex or cross-platform lockfile."""
+    global _lock_file_handle
+    if IS_WINDOWS and kernel32:
+        mutex = kernel32.CreateMutexW(None, True, APP_MUTEX_NAME)
+        last_error = kernel32.GetLastError()
+        # ERROR_ALREADY_EXISTS = 183
+        if last_error == 183:
+            if mutex:
+                kernel32.CloseHandle(mutex)
+            return False
+        return True
+    else:
+        # Cross-platform lockfile (macOS / Unix)
+        from src.core.config import APPDATA_DIR
+        os.makedirs(APPDATA_DIR, exist_ok=True)
+        lock_file = APPDATA_DIR / "rawview.lock"
+        try:
+            import fcntl
+            _lock_file_handle = open(lock_file, "w")
+            fcntl.flock(_lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except Exception:
+            return False
 
 def main():
     parser = argparse.ArgumentParser(description=f"{APP_NAME} {APP_VERSION}")
@@ -395,8 +423,8 @@ def main():
     app.setQuitOnLastWindowClosed(False)
     app.setWindowIcon(create_app_icon(128))
 
-    # Set default modern font
-    font = QFont("Segoe UI", 9)
+    # Set default modern font (Apple System font on macOS, Segoe UI on Windows)
+    font = QFont(".AppleSystemUIFont", 11) if IS_MACOS else QFont("Segoe UI", 9)
     app.setFont(font)
 
     # Load configuration
