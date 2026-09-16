@@ -1,4 +1,33 @@
-# 🚀 RawView v3.9.5 Release Notes
+# 🍏 RawView v3.9.5 (macOS DMG & Cross-Platform Release)
+
+**RawView v3.9.5** introduces full **macOS** support with a native **Apple Disk Image (`.dmg`) installer** and complete cross-platform architecture. You can now build, package, and deploy RawView for macOS with automated GitHub Actions CI/CD or local native compilation.
+
+---
+
+## 🌟 What's New in the macOS & Cross-Platform Release
+
+### 🍏 1. Native macOS DMG Installer & App Bundle
+* **Apple Disk Image (`.dmg`) Packaging**: Generates a standard, compressed, drag-and-drop installer (`RawView_v3.9.5.dmg`) with a pre-configured shortcut to `/Applications`.
+* **Standard macOS App Bundle (`RawView.app`)**: Built using a tailored PyInstaller macOS spec (`RawView_mac.spec`) featuring high-DPI Retina support (`NSHighResolutionCapable`), bundle identifier (`com.blackbox.rawview`), and metadata.
+* **512×512 Multi-Resolution Retina ICNS Icon**: Added high-resolution `assets/app_icon.icns` with multiple mipmap layers (16px to 512px) for crisp rendering in the macOS Dock, Finder, and Launchpad.
+
+### ⚙️ 2. Cross-Platform OS Abstraction & Safety
+* **Safe OS Guarding**: Refactored the core application to safely guard all Windows-specific APIs (`win32gui`, `win32con`, `win32api`, `win32com`, `uiautomation`, `winreg`, and `ctypes.windll`), ensuring zero crashes on non-Windows platforms while preserving 100% of Windows features.
+* **macOS Finder Monitor**: Introduced an AppleScript/Finder integration in `ExplorerHoverMonitor` (`_on_tick_macos()`) to monitor and preview selected design files, documents, and videos directly in macOS Finder.
+* **Cross-Platform Single Instance**: Enforces single-instance execution via a named mutex on Windows and a robust POSIX advisory lock (`fcntl` / `rawview.lock`) on macOS/Linux.
+* **macOS LaunchAgent Autostart**: Integrated native macOS LaunchAgent plist support (`~/Library/LaunchAgents/com.blackbox.rawview.plist`) for clean, system-level login item autostart without modifying registry.
+* **Hardware ID for macOS Licensing**: Generates a stable hardware signature on macOS using `IOPlatformUUID` or `hw.uuid` for offline Pro licensing.
+* **Standard Application Support Path**: Stores cache and settings under `~/Library/Application Support/RawView` on macOS.
+
+### ☁️ 3. Fully Automated GitHub Actions Cloud CI/CD
+* **Zero-Mac Cloud Compilation**: Added `.github/workflows/build_macos.yml` which automatically compiles and packages the `.dmg` on GitHub's free `macos-latest` runners.
+* **1-Click Artifact Downloads**: Every build automatically generates a ready-to-use downloadable `.dmg` artifact attached to the GitHub Actions run.
+* **Automated GitHub Release Attachment**: Pushing any version tag (e.g. `v3.9.5`) automatically attaches the compiled `.dmg` to GitHub Releases.
+* **Local Build Script**: Added `build_mac.py` to allow compiling directly on any macOS machine with `python build_mac.py`.
+
+---
+
+# 🚀 RawView v3.9.5 Release Notes (Windows)
 
 **RawView v3.9.5** resolves a critical Windows file locking issue where hovering over a file (PDF, AI, Media, Office, Images) caused the file to remain locked by the process, preventing users from renaming or deleting the file in Windows Explorer ("The action can't be completed because the file is open in RawView" / `WinError 32`).
 
