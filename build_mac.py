@@ -62,6 +62,26 @@ def build():
 
     print(f"\nSUCCESS: App bundle created at: {app_bundle}")
 
+    # 3.5 Set executable permissions and apply deep ad-hoc code signature
+    print("\n[3.5/4] Ensuring executable permissions & applying deep ad-hoc codesign...")
+    macos_bin_dir = app_bundle / "Contents" / "MacOS"
+    if macos_bin_dir.exists():
+        subprocess.run(["chmod", "-R", "+x", str(macos_bin_dir)])
+
+    # Deep ad-hoc codesign required for macOS Gatekeeper & Apple Silicon / Intel AMFI
+    codesign_cmd = [
+        "codesign",
+        "--force",
+        "--deep",
+        "--sign", "-",
+        str(app_bundle)
+    ]
+    res_sign = subprocess.run(codesign_cmd)
+    if res_sign.returncode == 0:
+        print("SUCCESS: Deep ad-hoc codesigning complete!")
+    else:
+        print(f"Notice: codesign returned code {res_sign.returncode}")
+
     # 4. Create DMG Package using hdiutil
     dmg_name = f"RawView_{APP_VERSION}.dmg"
     dmg_path = INSTALLER_OUT / dmg_name

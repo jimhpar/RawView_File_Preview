@@ -413,6 +413,17 @@ def main():
 
     # Enforce Single Instance
     if not check_single_instance():
+        if IS_MACOS:
+            try:
+                temp_app = QApplication(sys.argv)
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    None,
+                    "RawView",
+                    f"{APP_NAME} is already running in your top Menu Bar.\nLook for the RawView icon near the clock."
+                )
+            except Exception:
+                pass
         print(f"{APP_NAME} is already running in background.")
         sys.exit(0)
 
@@ -433,7 +444,11 @@ def main():
     # Start RawView Engine
     rawview = RawViewApp(config)
 
-    if args.settings:
+    # On macOS, when launched interactively from Applications without --minimized,
+    # show the settings dialog so user gets immediate visual confirmation
+    if IS_MACOS and not args.minimized:
+        rawview.tray_manager.show_settings()
+    elif args.settings:
         rawview.tray_manager.show_settings()
 
     print(f"{APP_NAME} {APP_VERSION} initialized successfully. Monitoring file hover in background.")
