@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v3.9.5"
+APP_VERSION = "v3.9.6"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.9.5"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.9.6"
 GITHUB_REPO = "jimhpar/RawView_File_Preview"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 

@@ -1,3 +1,35 @@
+# 🚀 RawView v3.9.6 Release Notes
+
+**RawView v3.9.6** completely eliminates cross-window phantom previews and same-name hover false positives. In previous versions, hovering over text, buttons, or UI elements in third-party applications (or arbitrary non-file controls) could mistakenly trigger previews of same-named files located on the Desktop or in other open folders. Version 3.9.6 introduces strict window boundaries, rigid UI Automation control hierarchy verification, isolated candidate folder scoping, and folder/file collision guards.
+
+---
+
+## 🌟 What's New in v3.9.6
+
+### 🛡️ 1. Strict Window & Container Boundary Guards
+* **Authorized File Container Verification**: Before performing any UI Automation queries or disk lookups, RawView verifies that the hovered window belongs to an authorized file container:
+  - **Windows Explorer**: `CabinetWClass`, `ExploreWClass`
+  - **Desktop**: `Progman`, `WorkerW`
+  - **File Dialogs**: `#32770`
+* **Zero Third-Party Interception**: Moving the cursor over third-party applications, games, browser pages, IDEs, or internal utilities immediately aborts hover processing (`0ms` overhead) with zero CPU cycles spent on UIAutomation querying.
+* **Process Self-Hover Immunity**: RawView automatically ignores its own process ID, preventing self-hover interference on preview HUDs and settings windows.
+
+### 🎯 2. Rigid UIA Row Hierarchy & Non-File Element Rejection
+* **Mandatory File Item Hierarchy**: Every candidate item must resolve to a valid `ListItemControl`, `DataItemControl`, or `TreeItemControl`.
+* **Removal of Loose Fallbacks**: Eliminated the arbitrary `row_control = elem` fallback that previously converted buttons, tabs, labels, and text controls into file candidates.
+* **Explorer Structural Elements Ignored**: Ribbon controls, search boxes, address bars, column headers, and scrollbars are strictly excluded from triggering file previews.
+
+### 🔒 3. Candidate Folder Scoping & Fallback Elimination
+* **Strict Desktop Scoping**: Desktop candidate paths are searched **exclusively** when the cursor is over the Desktop (`Progman` / `WorkerW`). Desktop paths are never searched when hovering inside Explorer windows or file dialogs.
+* **Isolated Explorer Tabs**: Explorer windows only search the active folder and tabs of that specific Explorer window.
+* **Removal of Global Disk Guessing**: Eliminated the legacy fallback that searched all open Explorer windows and Desktop whenever container context was undetermined.
+
+### 📁 4. Folder vs. File Collision Protection
+* **Folder Type Hint Guard**: Items with type descriptions containing `"File folder"`, `"Folder"`, or `"Directory"` are instantly excluded from media previews.
+* **Disk Directory Collision Immunity**: If an on-disk folder shares the exact same base name as a media file (e.g. folder `Overwatch` and video `Overwatch.mp4`), hovering over the folder will never falsely trigger preview playback for the video unless an explicit file extension or format type hint is present.
+
+---
+
 # 🍏 RawView v3.9.5 (macOS DMG & Cross-Platform Release)
 
 **RawView v3.9.5** introduces full **macOS** support with a native **Apple Disk Image (`.dmg`) installer** and complete cross-platform architecture. You can now build, package, and deploy RawView for macOS with automated GitHub Actions CI/CD or local native compilation.

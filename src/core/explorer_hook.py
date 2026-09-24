@@ -19,12 +19,59 @@ if IS_WINDOWS:
         import win32gui
         import win32con
         import win32api
+        import win32process
         import pythoncom
         import win32com.client
         import uiautomation as auto
         WINDOWS_HOOK_AVAILABLE = True
     except Exception:
         WINDOWS_HOOK_AVAILABLE = False
+
+def is_supported_file_browser_window(hwnd: int) -> tuple[bool, str]:
+    """
+    Validates whether hwnd belongs to an authorized file browsing container:
+    - Windows Explorer (CabinetWClass, ExploreWClass)
+    - Desktop (Progman, WorkerW)
+    - File Dialogs (#32770)
+    Returns (is_supported, matched_class)
+    """
+    if not hwnd or not WINDOWS_HOOK_AVAILABLE:
+        return False, ""
+    try:
+        # Check RawView's own process to avoid self-hover
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        if pid == os.getpid():
+            return False, ""
+    except Exception:
+        pass
+
+    # Check the window and its ancestors up to the root window
+    curr = hwnd
+    depth = 0
+    while curr and depth < 10:
+        try:
+            cls = win32gui.GetClassName(curr)
+            if cls in ("CabinetWClass", "ExploreWClass", "Progman", "WorkerW", "#32770"):
+                return True, cls
+            parent = win32gui.GetParent(curr)
+            if not parent or parent == curr:
+                break
+            curr = parent
+            depth += 1
+        except Exception:
+            break
+
+    try:
+        root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT)
+        if root_hwnd:
+            root_cls = win32gui.GetClassName(root_hwnd)
+            if root_cls in ("CabinetWClass", "ExploreWClass", "Progman", "WorkerW", "#32770"):
+                return True, root_cls
+    except Exception:
+        pass
+
+    return False, ""
+
 
 def normalize_str(s: str) -> str:
     """Strips whitespace, underscores, hyphens, and dots for fuzzy matching across line-wrapped labels."""
@@ -504,44 +551,35 @@ class ExplorerHoverMonitor(QObject):
                 if tf not in folders:
                     folders.append(tf)
 
-        # If hovering over Desktop, only search desktop locations
+        # If hovering over Desktop, ONLY search desktop locations
         if is_desktop:
             for dp in self.desktop_paths:
                 if dp not in folders and os.path.isdir(dp):
                     folders.append(dp)
             return folders
 
-        # If hovering inside an Explorer window and active tabs were found, restrict search ONLY to this window
-        if is_explorer_window and folders:
+        # If hovering inside an Explorer window, restrict search strictly to this window's tabs
+        if is_explorer_window:
             return folders
 
-        # Fallback only when window is unknown/undetermined
-        try:
-            pythoncom.CoInitialize()
-            shell = win32com.client.Dispatch("Shell.Application")
-            for w in shell.Windows():
-                try:
-                    url = str(getattr(w, "LocationURL", ""))
-                    doc_path = ""
-                    if hasattr(w, "Document") and hasattr(w.Document, "Folder"):
-                        doc_path = str(w.Document.Folder.Self.Path)
-                    
-                    parsed = parse_shell_url(url) or parse_shell_url(doc_path)
-                    if parsed and (parsed.startswith("ftp://") or parsed.startswith("ftps://") or os.path.isdir(parsed)) and parsed not in folders:
-                        folders.append(parsed)
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-        for dp in self.desktop_paths:
-            if dp not in folders and os.path.isdir(dp):
-                folders.append(dp)
-
+        # For file dialogs (#32770) or undetermined containers, NEVER blindly append Desktop
         return folders
 
     def _resolve_file_from_point(self, x: int, y: int):
         try:
+            # 0. Early Window Class & Process Guard:
+            # Only allow Explorer windows, Desktop, and File Dialogs.
+            hwnd = win32gui.WindowFromPoint((x, y)) if WINDOWS_HOOK_AVAILABLE else 0
+            if not hwnd:
+                return None, None
+
+            is_supported, matched_class = is_supported_file_browser_window(hwnd)
+            if not is_supported:
+                return None, None
+
+            is_explorer_window = (matched_class in ("CabinetWClass", "ExploreWClass"))
+            is_desktop = (matched_class in ("Progman", "WorkerW"))
+
             elem = auto.ControlFromPoint(x, y)
             if not elem:
                 return None, None
@@ -575,19 +613,10 @@ class ExplorerHoverMonitor(QObject):
                 curr = curr.GetParentControl()
                 depth += 1
 
-            # If no row container was found
+            # A valid file item MUST be inside a ListItemControl, DataItemControl, or TreeItemControl!
+            # Never fallback to arbitrary elements (buttons, text, header, toolbar, address bar)
             if not row_control:
-                # If hovering over blank list canvas / pane / toolbar / scrollbar, ignore
-                if elem.ControlTypeName in ("ListControl", "PaneControl", "WindowControl", "ScrollBarControl", "HeaderControl", "HeaderItemControl", "ToolBarControl", "MenuBarControl", "GroupControl"):
-                    return None, None
-                row_control = elem
-
-            # Identify window type
-            hwnd = win32gui.WindowFromPoint((x, y))
-            root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT) if hwnd else 0
-            cls_name = win32gui.GetClassName(root_hwnd) if root_hwnd else ""
-            is_explorer_window = (cls_name == "CabinetWClass")
-            is_desktop = (cls_name in ("Progman", "WorkerW"))
+                return None, None
 
             # Find parent list container name (e.g. "Downloads", "Space", etc.)
             folder_hint = ""
@@ -603,6 +632,8 @@ class ExplorerHoverMonitor(QObject):
             # 1. Query active Explorer COM context under cursor for this specific window and all its tabs
             priority_folder, focused_paths, selected_paths, tab_folders = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)
             candidate_folders = self._get_candidate_folders(priority_folder, tab_folders, is_explorer_window=is_explorer_window, is_desktop=is_desktop)
+            if not candidate_folders:
+                return None, None
 
             # 2. Extract Name & attributes strictly from the item row and its children
             names_to_try = []
@@ -663,6 +694,14 @@ class ExplorerHoverMonitor(QObject):
                 pass
 
             if not names_to_try:
+                return None, None
+
+            # If the item is explicitly identified as a folder/directory, abort!
+            is_folder_hint = any(
+                any(keyword in th.lower() for keyword in ("file folder", "folder", "directory"))
+                for th in type_hints
+            )
+            if is_folder_hint:
                 return None, None
 
             # 3. Explicit File Extension Check:
@@ -746,15 +785,23 @@ class ExplorerHoverMonitor(QObject):
 
                     # Find ALL files on disk in this folder matching this stem
                     matching_disk_files = []
+                    has_matching_folder = False
                     try:
                         for f in os.listdir(folder):
                             f_path = os.path.join(folder, f)
-                            if os.path.isfile(f_path):
-                                f_stem = Path(f).stem
-                                if f_stem.lower() == clean_name.lower() or normalize_str(f_stem) == norm_name or f.lower() == clean_name.lower():
+                            f_stem = Path(f).stem
+                            if f_stem.lower() == clean_name.lower() or normalize_str(f_stem) == norm_name or f.lower() == clean_name.lower():
+                                if os.path.isdir(f_path):
+                                    has_matching_folder = True
+                                elif os.path.isfile(f_path):
                                     matching_disk_files.append(f_path)
                     except Exception:
                         continue
+
+                    # If an actual folder with this name exists on disk and no specific file type hint was given,
+                    # the hovered item is the folder, not a file!
+                    if has_matching_folder and not target_exts:
+                        return None, None
 
                     if not matching_disk_files:
                         continue
