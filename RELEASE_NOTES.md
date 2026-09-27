@@ -1,3 +1,27 @@
+# 🚀 RawView v3.9.7 Release Notes
+
+**RawView v3.9.7** introduces build-hardening improvements to eliminate false-positive detection by Windows Defender and third-party antivirus engines, embeds authentic Windows PE version resources, and provides an automated code-signing pipeline for release distributions.
+
+---
+
+## 🌟 What's New in v3.9.7
+
+### 🛡️ 1. Antivirus False-Positive Hardening
+* **Disabled UPX Compression**: Removed UPX executable compression (`--noupx`) across PyInstaller compilation and packaging pipelines. Antivirus heuristic engines frequently flag UPX packers as suspicious; uncompressed binaries ensure clean reputation scoring.
+* **Embedded Windows PE Version Information**: The executable now carries comprehensive Windows resource metadata:
+  - **Company**: `BlackBox THC`
+  - **Product Name**: `RawView`
+  - **File Description**: `RawView - File Preview Utility for Windows`
+  - **Legal Copyright**: `Copyright (c) BlackBox THC. All rights reserved.`
+  - **File & Product Version**: `3.9.7.0`
+* **Inno Setup Version Info Directives**: The Windows installer now exposes verified metadata in the Windows file properties dialog.
+
+### 🔐 2. Integrated Code Signing Pipeline
+* **Automated Dual-Signing**: `build_release.py` now supports signing both the inner application binary (`RawView.exe`) and the final installer package (`RawView_v3.9.7_Setup.exe`).
+* **Cross-Tool Fallback**: Supports signing via Windows SDK `signtool.exe` or built-in PowerShell `Set-AuthenticodeSignature` (via `--cert` and `--password` CLI parameters or `RAWVIEW_CERT_PATH` environment variables).
+
+---
+
 # 🚀 RawView v3.9.6 Release Notes
 
 **RawView v3.9.6** completely eliminates cross-window phantom previews and same-name hover false positives. In previous versions, hovering over text, buttons, or UI elements in third-party applications (or arbitrary non-file controls) could mistakenly trigger previews of same-named files located on the Desktop or in other open folders. Version 3.9.6 introduces strict window boundaries, rigid UI Automation control hierarchy verification, isolated candidate folder scoping, and folder/file collision guards.
