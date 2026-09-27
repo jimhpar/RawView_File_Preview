@@ -60,10 +60,16 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v3.9.1_Setup.exe` installer:
+To compile the standalone `RawView_v3.9.7_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v3.9.1_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v3.9.7_Setup.exe`.
+
+---
+
+## 🔐 Code Signing
+
+Free code signing for RawView is generously provided by the [SignPath Foundation](https://signpath.org/).
