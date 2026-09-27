@@ -41,3 +41,10 @@ ai_xmp_*.jpg
 admin_keygen*
 keygen*
 
+# Certificates & Keys
+*.pfx
+*.p12
+*.cer
+*.key
+file_version_info.txt
+
