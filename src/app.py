@@ -425,7 +425,16 @@ def main():
             except Exception:
                 pass
         print(f"{APP_NAME} is already running in background.")
-        sys.exit(0)
+    # Enable Per-Monitor DPI Awareness V2 on Windows for multi-monitor accuracy
+    if IS_WINDOWS and user32:
+        try:
+            # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+            user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                pass
 
     # Initialize Qt Application
     app = QApplication(sys.argv)

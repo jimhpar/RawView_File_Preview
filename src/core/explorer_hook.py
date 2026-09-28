@@ -51,7 +51,7 @@ def is_supported_file_browser_window(hwnd: int) -> tuple[bool, str]:
     while curr and depth < 10:
         try:
             cls = win32gui.GetClassName(curr)
-            if cls in ("CabinetWClass", "ExploreWClass", "Progman", "WorkerW", "#32770"):
+            if cls in ("CabinetWClass", "ExploreWClass", "Progman", "WorkerW", "#32770", "SHELLDLL_DefView"):
                 return True, cls
             parent = win32gui.GetParent(curr)
             if not parent or parent == curr:
@@ -65,12 +65,95 @@ def is_supported_file_browser_window(hwnd: int) -> tuple[bool, str]:
         root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT)
         if root_hwnd:
             root_cls = win32gui.GetClassName(root_hwnd)
-            if root_cls in ("CabinetWClass", "ExploreWClass", "Progman", "WorkerW", "#32770"):
+            if root_cls in ("CabinetWClass", "ExploreWClass", "Progman", "WorkerW", "#32770", "SHELLDLL_DefView"):
                 return True, root_cls
     except Exception:
         pass
 
     return False, ""
+
+
+def get_all_desktop_paths() -> list[str]:
+    """
+    Dynamically discovers all physical and virtual Desktop paths on the system:
+    - User Shell Folders / Shell Folders registry (captures relocated Desktop e.g. D:\\Desktop)
+    - Shell COM Special Folders: ssfDESKTOP (0), ssfDESKTOPDIRECTORY (16), ssfCOMMONDESKTOPDIR (25)
+    - WScript.Shell SpecialFolders ('Desktop', 'AllUsersDesktop')
+    - OneDrive Desktop directories (Personal, Commercial, School)
+    - Standard user profile Desktop (~/Desktop, Public Desktop)
+    """
+    paths = []
+
+    def _add_path(p: str):
+        if not p:
+            return
+        clean = os.path.normpath(str(p).strip())
+        if clean and os.path.isdir(clean) and clean not in paths:
+            paths.append(clean)
+
+    if IS_WINDOWS and WINDOWS_HOOK_AVAILABLE:
+        # 1. Shell API via COM
+        try:
+            pythoncom.CoInitialize()
+            shell = win32com.client.Dispatch("Shell.Application")
+            for fid in (0, 16, 25):
+                try:
+                    ns = shell.NameSpace(fid)
+                    if ns and hasattr(ns, "Self") and hasattr(ns.Self, "Path"):
+                        _add_path(ns.Self.Path)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 2. Windows Registry: User Shell Folders (captures relocated Desktop e.g. D:\\Desktop)
+        try:
+            import winreg
+            for root_key in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                for subkey in (
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
+                ):
+                    try:
+                        with winreg.OpenKey(root_key, subkey) as key:
+                            for val_name in ("Desktop", "Common Desktop"):
+                                try:
+                                    val, _ = winreg.QueryValueEx(key, val_name)
+                                    _add_path(os.path.expandvars(str(val)))
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # 3. WScript.Shell Special Folders
+        try:
+            wscript = win32com.client.Dispatch("WScript.Shell")
+            for sf in ("Desktop", "AllUsersDesktop"):
+                try:
+                    _add_path(wscript.SpecialFolders(sf))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # 4. Standard User Profile, Public Desktop & OneDrive
+    user_home = os.path.expanduser("~")
+    _add_path(os.path.join(user_home, "Desktop"))
+    _add_path(os.path.join(user_home, "OneDrive", "Desktop"))
+    _add_path("C:/Users/Public/Desktop")
+
+    # Scan for OneDrive variants (e.g. "OneDrive - Personal", "OneDrive - Business")
+    try:
+        if os.path.isdir(user_home):
+            for entry in os.listdir(user_home):
+                if "onedrive" in entry.lower():
+                    _add_path(os.path.join(user_home, entry, "Desktop"))
+    except Exception:
+        pass
+
+    return paths
 
 
 def normalize_str(s: str) -> str:
@@ -264,12 +347,8 @@ class ExplorerHoverMonitor(QObject):
         self.mouse_click_down = False
         self.preview_hud_rect_provider = None
         
-        # Desktop candidate folders
-        self.desktop_paths = [
-            os.path.normpath(os.path.expanduser("~/Desktop")),
-            os.path.normpath(os.path.expanduser("~/OneDrive/Desktop")),
-            os.path.normpath("C:/Users/Public/Desktop")
-        ]
+        # Desktop candidate folders (dynamically discovered via Registry, Shell COM, and User Profile)
+        self.desktop_paths = get_all_desktop_paths()
 
         # Timer ticks every 35ms for instant settle detection
         self.timer = QTimer(self)
@@ -393,6 +472,16 @@ class ExplorerHoverMonitor(QObject):
         x, y = cur_pos.x(), cur_pos.y()
         now = int(time.monotonic() * 1000)
 
+        # Retrieve Win32 Native Physical Cursor Position for accurate multi-monitor & DPI handling
+        phys_x, phys_y = x, y
+        if WINDOWS_HOOK_AVAILABLE:
+            try:
+                pt = wintypes.POINT()
+                if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+                    phys_x, phys_y = pt.x, pt.y
+            except Exception:
+                pass
+
         if cur_pos != self.last_pos:
             # Cursor is in motion
             self.last_pos = cur_pos
@@ -405,8 +494,8 @@ class ExplorerHoverMonitor(QObject):
 
             if self.is_hover_active and self.active_rect:
                 left, top, right, bottom = self.active_rect
-                # Tight vertical buffer (4px) so moving between adjacent rows triggers instant hover switch
-                if x < left - 16 or x > right + 16 or y < top - 4 or y > bottom + 4:
+                # Tight vertical buffer (4px) comparing physical cursor with physical active_rect
+                if phys_x < left - 16 or phys_x > right + 16 or phys_y < top - 4 or phys_y > bottom + 4:
                     self._clear_hover()
             return
 
@@ -415,7 +504,7 @@ class ExplorerHoverMonitor(QObject):
         if dwell_ms >= self.hover_delay_ms:
             if cur_pos != getattr(self, "_last_resolved_pos", QPoint(-1, -1)):
                 self._last_resolved_pos = cur_pos
-                self._resolve_and_trigger_hover(x, y)
+                self._resolve_and_trigger_hover(x, y, phys_x, phys_y)
 
     def _clear_hover(self):
         self.is_hover_active = False
@@ -424,8 +513,12 @@ class ExplorerHoverMonitor(QObject):
         self._last_resolved_pos = QPoint(-1, -1)
         self.hover_cleared.emit()
 
-    def _resolve_and_trigger_hover(self, x: int, y: int):
-        file_path, bounding_rect = self._resolve_file_from_point(x, y)
+    def _resolve_and_trigger_hover(self, x: int, y: int, phys_x: int = None, phys_y: int = None):
+        if phys_x is None:
+            phys_x = x
+        if phys_y is None:
+            phys_y = y
+        file_path, bounding_rect = self._resolve_file_from_point(phys_x, phys_y)
         if file_path:
             is_valid = file_path.startswith("ftp://") or file_path.startswith("ftps://") or os.path.isfile(file_path)
             if is_valid:
@@ -434,7 +527,7 @@ class ExplorerHoverMonitor(QObject):
                     # Emit if path changed OR if bounding rect moved to a new row/item
                     rect_changed = False
                     if self.active_rect and bounding_rect:
-                        # Check if row vertically changed by more than 10px
+                        # Check if row vertically changed by more than 8px
                         if abs(self.active_rect[1] - bounding_rect[1]) > 8:
                             rect_changed = True
 
@@ -442,6 +535,7 @@ class ExplorerHoverMonitor(QObject):
                         self.active_file_path = file_path
                         self.active_rect = bounding_rect
                         self.is_hover_active = True
+                        # Send Qt logical coordinates (x, y) so QGuiApplication.screenAt and move(pos) accurately place HUD on screen
                         self.file_hovered.emit(file_path, x, y)
                     return
         
@@ -449,7 +543,7 @@ class ExplorerHoverMonitor(QObject):
         if self.is_hover_active and not self.preview_is_pinned:
             if self.active_rect:
                 left, top, right, bottom = self.active_rect
-                if x < left - 16 or x > right + 16 or y < top - 4 or y > bottom + 4:
+                if phys_x < left - 16 or phys_x > right + 16 or phys_y < top - 4 or phys_y > bottom + 4:
                     self._clear_hover()
             else:
                 self._clear_hover()
@@ -478,7 +572,9 @@ class ExplorerHoverMonitor(QObject):
             for w in shell.Windows():
                 try:
                     w_hwnd = getattr(w, "HWND", 0)
-                    if w_hwnd == root_hwnd or w_hwnd == hwnd:
+                    if (w_hwnd == root_hwnd or w_hwnd == hwnd or 
+                        win32gui.IsChild(root_hwnd, w_hwnd) or 
+                        win32gui.IsChild(w_hwnd, hwnd)):
                         matching_windows.append(w)
                 except Exception:
                     continue
@@ -553,7 +649,8 @@ class ExplorerHoverMonitor(QObject):
 
         # If hovering over Desktop, ONLY search desktop locations
         if is_desktop:
-            for dp in self.desktop_paths:
+            desktop_dirs = get_all_desktop_paths()
+            for dp in desktop_dirs:
                 if dp not in folders and os.path.isdir(dp):
                     folders.append(dp)
             return folders
@@ -628,6 +725,9 @@ class ExplorerHoverMonitor(QObject):
                     break
                 p = p.GetParentControl()
                 p_depth += 1
+
+            if folder_hint and folder_hint.lower() in ("folderview", "desktop"):
+                is_desktop = True
 
             # 1. Query active Explorer COM context under cursor for this specific window and all its tabs
             priority_folder, focused_paths, selected_paths, tab_folders = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)

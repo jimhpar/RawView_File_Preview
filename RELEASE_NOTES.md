@@ -1,3 +1,28 @@
+# 🚀 RawView v3.9.8 Release Notes
+
+**RawView v3.9.8** resolves critical multi-monitor preview issues, fixes Desktop file preview failures on relocated or redirected folders, and fixes Camera RAW image orientation (Sony ARW, Canon CR2, etc.) displaying rotated 90 degrees clockwise.
+
+---
+
+## 🌟 What's New in v3.9.8
+
+### 🖥️ 1. Multi-Monitor & Secondary Display Preview Fixes
+* **Win32 Physical Coordinate Separation**: Decoupled Win32 & UI Automation screen coordinate systems from Qt's logical coordinates. When hovering over items or folders placed on secondary monitors (or screens with custom DPI scaling like 125%/150%), `GetCursorPos` retrieves native physical screen coordinates to accurately query `WindowFromPoint` and `ControlFromPoint` without monitor drift or bounding-box collision mismatches.
+* **Per-Monitor DPI Awareness V2**: Enabled Windows Per-Monitor DPI Awareness V2 context (`DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`) at startup to prevent DWM coordinate virtualization across multi-monitor configurations.
+* **Explorer Tab & Child Window Hierarchy Matching**: Extended Explorer window tracking with `win32gui.IsChild` relationships to recognize tabs and split panes hosted on secondary displays.
+* **Desktop List View Recognition**: Added support for desktop list container classes and `FolderView`/`Desktop` hints across all connected monitors.
+
+### 📁 2. Dynamic Desktop Location Auto-Discovery
+* **Registry & Shell Redirection Support**: Eliminated static desktop folder assumptions. RawView now dynamically queries Windows Registry (`User Shell Folders` & `Shell Folders`), Windows Shell COM namespaces (`ssfDESKTOP`, `ssfDESKTOPDIRECTORY`, `ssfCOMMONDESKTOPDIR`), and `WScript.Shell` special folders.
+* **Relocated Desktop Compatibility**: Users who relocated their Desktop to other drives (e.g. `D:\Desktop`) or use custom OneDrive for Business folders now enjoy instant desktop file previews.
+
+### 📷 3. Camera RAW Image Orientation Correction
+* **Automatic EXIF Orientation Transpose**: In `RawCameraDecoder`, extracted embedded JPEG previews now automatically apply `ImageOps.exif_transpose` to honor camera EXIF tags (such as Orientation 6 = 90° CW and Orientation 8 = 90° CCW / 270° CW).
+* **Sensor Flip Metadata Fallback**: If an embedded thumbnail lacks EXIF header tags, `raw.sizes.flip` metadata is automatically evaluated to ensure portrait photos taken with Sony Alpha (ARW), Canon (CR2/CR3), Nikon (NEF), and other RAW cameras render upright.
+* **PIL Fallback Orientation**: Added `exif_transpose` to the PIL fallback decoder for DNG and other RAW formats.
+
+---
+
 # 🚀 RawView v3.9.7 Release Notes
 
 **RawView v3.9.7** introduces build-hardening improvements to eliminate false-positive detection by Windows Defender and third-party antivirus engines, embeds authentic Windows PE version resources, and provides an automated code-signing pipeline for release distributions.

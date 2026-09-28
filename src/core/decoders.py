@@ -906,6 +906,31 @@ class RawCameraDecoder:
                     thumb = raw.extract_thumb()
                     if thumb and thumb.format == rawpy.ThumbFormat.JPEG:
                         with Image.open(io.BytesIO(thumb.data)) as img:
+                            # Auto-orient based on EXIF
+                            has_exif_orient = False
+                            try:
+                                exif = img.getexif()
+                                if exif and 0x0112 in exif and exif[0x0112] not in (1, None):
+                                    has_exif_orient = True
+                                transposed = ImageOps.exif_transpose(img)
+                                if transposed is not None:
+                                    img = transposed
+                            except Exception:
+                                pass
+
+                            # If thumbnail didn't have EXIF orientation, check raw.sizes.flip from Camera metadata
+                            if not has_exif_orient:
+                                try:
+                                    flip = getattr(raw.sizes, 'flip', 0)
+                                    if flip == 3:
+                                        img = img.transpose(Image.Transpose.ROTATE_180)
+                                    elif flip == 5:
+                                        img = img.transpose(Image.Transpose.ROTATE_90)
+                                    elif flip == 6:
+                                        img = img.transpose(Image.Transpose.ROTATE_270)
+                                except Exception:
+                                    pass
+
                             w, h = img.size
                             render_img = img.convert("RGB")
                             if max(w, h) > max_size:
@@ -932,8 +957,8 @@ class RawCameraDecoder:
                 qim = pil_to_qimage(img)
                 return PreviewResult(
                     qimage=qim,
-                    width=raw.sizes.raw_width,
-                    height=raw.sizes.raw_height,
+                    width=w,
+                    height=h,
                     mode="RAW Sensor Data",
                     format_name=ext.replace(".", "").upper(),
                     file_size=size,
@@ -945,6 +970,12 @@ class RawCameraDecoder:
         # Attempt 3: PIL Image fallback (handles DNG, etc.)
         try:
             with Image.open(file_path) as img:
+                try:
+                    transposed = ImageOps.exif_transpose(img)
+                    if transposed is not None:
+                        img = transposed
+                except Exception:
+                    pass
                 w, h = img.size
                 render_img = img.convert("RGB")
                 if max(w, h) > max_size:
