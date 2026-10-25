@@ -21,13 +21,15 @@ hiddenimports = [
     'PIL.TiffImagePlugin',
     'PIL.PsdImagePlugin',
     'striprtf',
+    'rarfile',
+    'py7zr',
     'src.core.bijoy_converter',
     'src.core.updater',
     'src.ui.update_dialog'
 ]
 
 # Collect essential packages
-for pkg in ['pypdfium2', 'pymupdf', 'psd_tools', 'PyQt6', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets', 'reportlab', 'rawpy']:
+for pkg in ['pypdfium2', 'pymupdf', 'psd_tools', 'PyQt6', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets', 'reportlab', 'rawpy', 'py7zr']:
     try:
         tmp_ret = collect_all(pkg)
         datas += tmp_ret[0]
