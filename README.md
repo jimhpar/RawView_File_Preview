@@ -1,11 +1,21 @@
-# RawView (v3.9.7)
+# RawView (v4.1.0)
 
-**RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups, multi-page document navigation, and live video playback when hovering over design, graphics, documents, Microsoft Office files, media projects, and standard images in Windows Explorer, Desktop, and File Dialogs.
+**RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups, multi-page document navigation, live video playback, and **permanent Windows Explorer folder grid thumbnails with native app icon overlay badges** for design, graphics, documents, Microsoft Office files, media projects, and camera RAW images.
 
 ---
 
 ## 🚀 Features
 
+- **🖼️ Permanent Windows Explorer Folder Grid Thumbnails & App Badges (NEW in v4.1.0)**:
+  - **Direct Folder Previews**: Renders high-definition artwork thumbnails directly inside Windows Explorer folders for `.psd`, `.ai`, `.eps`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.raw`, `.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.svg`.
+  - **Native App Type Overlay Badges**: Displays crisp application overlay badges (`Ps`, `Ai`, `W`, `P`, `PDF`) in the bottom-right corner of thumbnails.
+  - **Always-Active 24/7 Service**: Folder thumbnail generation remains permanently active even when hover preview is toggled off (`Ctrl + \``).
+  - **3-Tier Resilient Architecture**: Ultra-fast disk cache (<1ms), Live Named Pipe IPC (<10ms), and standalone headless worker fallback.
+  - **Cache Refresh Button**: Single-click utility in Settings to rebuild and refresh Windows Explorer thumbnail caches.
+- **📦 Zero-Lag Archive File Previews (ZIP, RAR, 7-Zip, TAR - NEW in v4.1.0)**:
+  - **Zero-Extraction Inspection**: Hover over `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, `.bz2` to instantly view a structured directory tree without decompressing or extracting the archive.
+  - **Smart Type Icons & Metadata**: Displays contextual file icons (📁 folder, 🖼️ design, 📄 document, 🎬 media, ⚙️ code), formatted individual sizes, date modified, total file/folder count, and uncompressed size ratio.
+  - **Format-Themed Aesthetic Badges**: Distinct glowing badges and glassmorphic headers tailored for ZIP (Amber), RAR (Fuchsia), and 7-Zip (Cyan).
 - **⚡ Zero-Lag Hover Previews**: Instant (<15ms) preview popups on cursor hover with configurable dwell time (40ms–350ms).
 - **📑 Multi-Page Thumbnail Sidebar (PDF & Word)**:
   - **Visual Left Sidebar**: Displays miniature page preview thumbnails for all pages (`Page 1`, `Page 2`, `Page 3`...).
@@ -60,13 +70,13 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v3.9.7_Setup.exe` installer:
+To compile the standalone `RawView_v4.1.0_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v3.9.7_Setup.exe`.
+The installer will be generated in `dist_installer/RawView_v4.1.0_Setup.exe`.
 
 ---
 

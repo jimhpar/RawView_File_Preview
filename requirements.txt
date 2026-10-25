@@ -7,4 +7,6 @@ Pillow>=10.0.0
 rawpy>=0.21.0
 reportlab>=4.0.0
 striprtf>=0.0.26
+rarfile>=4.2
+py7zr>=0.22.0
 pyinstaller>=6.0.0

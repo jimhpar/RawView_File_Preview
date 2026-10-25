@@ -1,8 +1,8 @@
-; Inno Setup Script for RawView v3.9.8
+; Inno Setup Script for RawView v4.1.0
 ; Installs into C:\Program Files\RawView with Windows Boot Autostart & Clean Uninstallation
 
 #define MyAppName "RawView"
-#define MyAppVersion "3.9.8"
+#define MyAppVersion "4.1.0"
 #define MyAppPublisher "BlackBox THC"
 #define MyAppURL "https://github.com/jimhpar/RawView_File_Preview"
 #define MyAppExeName "RawView.exe"
@@ -49,6 +49,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\RawView\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\RawView\RawViewThumbnailProvider.dll"; DestDir: "{app}"; Flags: ignoreversion regserver
 Source: "..\assets\app_icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "..\assets\checkmark.svg"; DestDir: "{app}\assets"; Flags: ignoreversion
 

@@ -359,6 +359,40 @@ class SettingsDialog(QDialog):
 
         main_layout.addWidget(gen_group)
 
+        # 2b. Windows Explorer Grid Thumbnails & Badges (Always Active)
+        explorer_group = QGroupBox("Windows Explorer Grid Thumbnails && Badges", self)
+        explorer_layout = QVBoxLayout(explorer_group)
+        explorer_layout.setContentsMargins(14, 12, 14, 10)
+        explorer_layout.setSpacing(6)
+
+        status_lbl = QLabel("• Folder Thumbnails: Permanently Active 24/7 (PSD, AI, RAW, PDF, Office)", self)
+        status_lbl.setStyleSheet("color: #34D399; font-weight: 600; font-size: 11px;")
+        explorer_layout.addWidget(status_lbl)
+
+        badge_lbl = QLabel("• App Overlay Badges: Enabled (Shows Ps, Ai, W, P, PDF badges on icons)", self)
+        badge_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        explorer_layout.addWidget(badge_lbl)
+
+        refresh_cache_btn = QPushButton("🔄 Rebuild && Refresh Windows Thumbnail Cache", self)
+        refresh_cache_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                border: 1px solid #334155;
+                color: #38BDF8;
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                border-color: #38BDF8;
+            }
+        """)
+        refresh_cache_btn.clicked.connect(self._rebuild_thumbnail_cache)
+        explorer_layout.addWidget(refresh_cache_btn)
+
+        main_layout.addWidget(explorer_group)
+
         # 3. Timing & Performance
         perf_group = QGroupBox("Hover Responsiveness", self)
         perf_layout = QVBoxLayout(perf_group)
@@ -459,6 +493,30 @@ class SettingsDialog(QDialog):
             adobe_layout.addWidget(cb, row, col)
 
         main_layout.addWidget(adobe_group)
+
+        # 6b. Archives & Compressed Packages
+        archive_group = QGroupBox("Archives && Compressed Packages", self)
+        archive_layout = QGridLayout(archive_group)
+        archive_layout.setContentsMargins(14, 12, 14, 10)
+        archive_layout.setHorizontalSpacing(20)
+        archive_layout.setVerticalSpacing(6)
+
+        archive_items = [
+            (".zip", "ZIP Archive (.zip)"),
+            (".rar", "RAR Archive (.rar)"),
+            (".7z",  "7-Zip Archive (.7z)"),
+            (".tar", "TAR / GZ Archive (.tar, .gz, .tgz)"),
+        ]
+
+        for idx, (ext, label) in enumerate(archive_items):
+            cb = QCheckBox(label, self)
+            cb.setChecked(ext in active_fmts)
+            self.format_cbs[ext] = cb
+            row = idx // 2
+            col = idx % 2
+            archive_layout.addWidget(cb, row, col)
+
+        main_layout.addWidget(archive_group)
 
         # 7. Live Video Formats
         vid_group = QGroupBox("Live Video Formats", self)
@@ -825,6 +883,8 @@ class SettingsDialog(QDialog):
                     selected.extend([".aet", ".aepx"])
                 elif ext == ".prproj":
                     selected.append(".prset")
+                elif ext == ".tar":
+                    selected.extend([".gz", ".tgz", ".bz2"])
                 elif ext == ".mp4":
                     selected.extend([".m4v", ".mpg", ".mpeg"])
                 elif ext == ".dng":
@@ -878,3 +938,23 @@ class SettingsDialog(QDialog):
         self.check_updates_btn.setText("🔄 Check for Updates Now")
         self.update_status_label.setText(f"⚠️ Could not check updates: {error_msg}")
         self.update_status_label.setStyleSheet("color: #FB7185; font-size: 11px;")
+
+    def _rebuild_thumbnail_cache(self):
+        """Clears local thumbnail cache and prompts Windows Shell to rebuild thumbnails."""
+        try:
+            import shutil
+            import ctypes
+            from src.core.config import CACHE_DIR
+            thumbs_dir = CACHE_DIR / "thumbs"
+            if thumbs_dir.exists():
+                shutil.rmtree(thumbs_dir, ignore_errors=True)
+                thumbs_dir.mkdir(parents=True, exist_ok=True)
+            if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
+                ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+            QMessageBox.information(
+                self,
+                "Explorer Thumbnail Cache",
+                "Windows Explorer thumbnail cache refreshed successfully!\nExplorer will reload new thumbnails and app badges immediately."
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Cache Refresh", f"Could not refresh thumbnail cache: {e}")

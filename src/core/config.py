@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v3.9.8"
+APP_VERSION = "v4.1.0"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v3.9.8"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v4.1.0"
 GITHUB_REPO = "jimhpar/RawView_File_Preview"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -40,7 +40,14 @@ SUPPORTED_EXTENSIONS = {
     ".pptx": "Microsoft PowerPoint",
     ".ppt": "Microsoft PowerPoint Legacy",
     ".rtf": "Rich Text Format",
-    ".csv": "Comma Separated Values",
+    # Archives & Compressed Packages
+    ".zip": "ZIP Archive",
+    ".rar": "RAR Archive",
+    ".7z":  "7-Zip Archive",
+    ".tar": "TAR Archive",
+    ".gz":  "GZip Archive",
+    ".tgz": "GZip Tar Archive",
+    ".bz2": "BZip2 Archive",
     # Adobe Projects
     ".aep": "After Effects Project",
     ".aet": "After Effects Template",

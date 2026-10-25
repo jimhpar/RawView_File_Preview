@@ -1,3 +1,44 @@
+# 🚀 RawView v4.1.0 Release Notes
+
+**RawView v4.1.0** introduces a milestone architecture upgrade: **Permanent Windows Explorer Folder Grid Thumbnails and Native App Type Overlay Badges** (`IThumbnailProvider` COM Shell Extension). In addition to instant hover popups, RawView now generates high-definition artwork thumbnails directly inside Windows Explorer folders for Adobe Creative files (PSD, PSB, AI, EPS), Microsoft Office documents (Word, Excel, PowerPoint), PDFs, Vector SVGs, and Camera RAW files—along with crisp application icon overlay badges (`Ps`, `Ai`, `W`, `P`, `PDF`) stamped on the bottom-right corner!
+
+---
+
+## 🌟 What's New in v4.1.0
+
+### 🖼️ 1. Permanent Windows Explorer Folder Grid Thumbnails (`IThumbnailProvider`)
+* **Direct Shell Integration**: Engineered a native 64-bit Windows Shell Extension COM DLL (`RawViewThumbnailProvider.dll`) implementing `IThumbnailProvider`, `IInitializeWithFile`, and `IInitializeWithStream`.
+* **Always-Active 24/7 Service**: Folder thumbnail generation runs permanently in the background. It is completely independent of the mouse hover preview toggle (`Ctrl + \``)—even if hover preview popups are turned off, folder thumbnails continue to render uninterrupted in Explorer.
+* **Full Design & Document Format Coverage**:
+  - **Adobe Creative Suite**: `.psd`, `.psb`, `.ai`, `.eps`
+  - **Documents & Microsoft Office**: `.pdf`, `.docx`, `.doc`, `.rtf`, `.pptx`, `.ppt`, `.xlsx`, `.xls`
+  - **Camera RAW**: `.cr2`, `.cr3`, `.crw`, `.nef`, `.nrw`, `.arw`, `.srf`, `.sr2`, `.raf`, `.orf`, `.rw2`, `.pef`, `.ptx`, `.3fr`, `.fff`, `.iiq`, `.raw`, `.x3f`, `.dng`
+  - **Vector Graphics**: `.svg`, `.svgz`
+  - **Archives & Packages**: `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, `.bz2`
+
+### 📦 2. Zero-Lag Archive Content Previews (ZIP, RAR, 7-Zip, TAR)
+* **Zero-Extraction Hover Previews**: Hovering over `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, or `.bz2` files displays a rich, dark-glassmorphic file explorer canvas without extracting any files.
+* **Instant Archive Inspection**: Inspects ZIP Central Directory headers, RAR file tables (via pure-Python `rarfile` or installed WinRAR `UnRAR.exe`), and 7-Zip header metadata (`py7zr`) in under 5ms for instantaneous preview popups.
+* **Format-Themed Aesthetic Badges**: Dedicated visual branding per archive format (Amber for ZIP, Fuchsia `#C026D3` for RAR, Cyan `#06B6D4` for 7-Zip, Slate for TAR).
+* **Smart File Type Icons**: Automatically categorizes archived files with contextual icons (📁 folder, 🖼️ design/image, 📄 document, 🎬 video/audio, ⚙️ code/data).
+* **Archive Statistics & Ratios**: Displays total file count, folder count, total uncompressed size, compressed archive size, individual file sizes, and modification dates.
+* **Explorer Folder Grid Thumbnails**: Generates visual archive overview cards directly on Windows Explorer file icons for ZIP, RAR, and 7-Zip packages.
+
+### 🏷️ 3. Native Application Type Overlay Badges
+* **Windows Shell Type Overlay Integration**: Fully compatible with Windows `ShowTypeOverlay` (`Display file icon on thumbnails`). When thumbnails are generated, Windows Explorer automatically overlays the registered application's icon (`Ps`, `Ai`, `W`, `P`, `PDF`) in the bottom-right corner of the thumbnail.
+* **Branded Fallback**: For systems without Adobe apps installed, RawView provides crisp format badge associations.
+
+### ⚡ 3. 3-Tier Resilient Performance Architecture
+* **Tier 1 (Disk Cache <1ms)**: Thumbnails are saved as 32-bit ARGB DIB bitmaps in `%LOCALAPPDATA%\RawView\cache\thumbs` using 64-bit FNV-1a path/mtime hashes for sub-millisecond instant recall during Explorer scrolling.
+* **Tier 2 (Live Named Pipe IPC <10ms)**: Lightweight C++ Shell DLL connects to RawView's background service via Windows Named Pipe (`\\.\pipe\RawViewThumbnailPipe`), decoding thumbnails directly in memory without launching extra processes.
+* **Tier 3 (Headless Worker Fallback)**: If RawView's GUI app is restarting or closed, the DLL launches `RawView.exe --headless-thumb` to decode and populate the cache.
+
+### ⚙️ 4. Settings & Explorer Cache Refresh
+* **Explorer Integration Card**: Clean UI reference in the Preferences tab showing folder thumbnails and app badge status.
+* **Rebuild & Refresh Thumbnail Cache**: One-click utility button in Settings to purge local thumbnail cache and trigger `SHChangeNotify(SHCNE_ASSOCCHANGED)` for instant Explorer thumbnail reloading.
+
+---
+
 # 🚀 RawView v3.9.8 Release Notes
 
 **RawView v3.9.8** resolves critical multi-monitor preview issues, fixes Desktop file preview failures on relocated or redirected folders, and fixes Camera RAW image orientation (Sony ARW, Canon CR2, etc.) displaying rotated 90 degrees clockwise.

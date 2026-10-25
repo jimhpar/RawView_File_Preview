@@ -203,6 +203,14 @@ def build(cert_path: str = "", cert_pass: str = ""):
         "--hidden-import=src.core.bijoy_converter",
         "--hidden-import=src.core.updater",
         "--hidden-import=src.ui.update_dialog",
+        "--hidden-import=src.core.thumbnail_server",
+        "--collect-all=py7zr",
+        "--hidden-import=rarfile",
+        "--hidden-import=py7zr",
+        "--hidden-import=win32pipe",
+        "--hidden-import=win32file",
+        "--hidden-import=win32event",
+        "--hidden-import=winerror",
         str(BASE_DIR / "src" / "app.py")
     ]
 
@@ -216,7 +224,16 @@ def build(cert_path: str = "", cert_pass: str = ""):
     # Copy assets into dist/RawView/assets
     shutil.copytree(BASE_DIR / "assets", DIST_DIR / "RawView" / "assets", dirs_exist_ok=True)
 
-    # 4. Optional Sign: Sign RawView.exe before installer wraps it
+    # 4. Compile and bundle RawViewThumbnailProvider.dll
+    print("\n[*] Compiling and bundling RawViewThumbnailProvider.dll...")
+    from src.native.thumbnail_provider.build_dll import compile_dll
+    dll_dest = DIST_DIR / "RawView"
+    if not compile_dll(dll_dest):
+        print("ERROR: Failed to compile RawViewThumbnailProvider.dll")
+        sys.exit(1)
+    sign_binary(dll_dest / "RawViewThumbnailProvider.dll", cert_path, cert_pass)
+
+    # 5. Optional Sign: Sign RawView.exe before installer wraps it
     rawview_exe = DIST_DIR / "RawView" / "RawView.exe"
     signed_rawview = sign_binary(rawview_exe, cert_path, cert_pass)
 

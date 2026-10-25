@@ -7,6 +7,8 @@ import re
 import base64
 import shutil
 import zipfile
+import tarfile
+import datetime
 import csv
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -2325,9 +2327,335 @@ class AdobeProjectDecoder:
             extra_info="Creative Cloud Project"
         )
 
+class ArchiveDecoder:
+    """Ultra-fast zero-lag inspector and visual canvas renderer for ZIP and TAR archives."""
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        sz = float(size_bytes)
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if sz < 1024.0:
+                return f"{sz:.1f} {unit}" if unit != 'B' else f"{int(sz)} B"
+            sz /= 1024.0
+        return f"{sz:.1f} TB"
+
+    @staticmethod
+    def _get_item_icon(name: str, is_dir: bool) -> str:
+        if is_dir or name.endswith("/"):
+            return "📁"
+        ext = Path(name).suffix.lower()
+        if ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico", ".tiff", ".tif", ".svg", ".svgz", ".psd", ".psb", ".ai", ".eps", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng"):
+            return "🖼️"
+        elif ext in (".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".txt", ".rtf", ".csv", ".md"):
+            return "📄"
+        elif ext in (".mp4", ".mov", ".mkv", ".avi", ".wmv", ".webm", ".mp3", ".wav", ".flac", ".m4a"):
+            return "🎬"
+        elif ext in (".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".iso"):
+            return "📦"
+        elif ext in (".py", ".js", ".ts", ".html", ".css", ".json", ".xml", ".yml", ".yaml", ".c", ".cpp", ".h", ".cs", ".java", ".go", ".rs", ".sh", ".bat", ".exe", ".dll"):
+            return "⚙️"
+        return "📄"
+
+    @classmethod
+    def _read_archive_entries(cls, file_path: str) -> dict:
+        ext = Path(file_path).suffix.lower()
+        entries = []
+        total_uncompressed = 0
+        total_compressed = 0
+        file_count = 0
+        folder_count = 0
+
+        if ext == ".zip":
+            try:
+                with zipfile.ZipFile(file_path, "r") as zf:
+                    for info in zf.infolist():
+                        is_dir = info.is_dir() or info.filename.endswith("/")
+                        if is_dir:
+                            folder_count += 1
+                        else:
+                            file_count += 1
+                            total_uncompressed += info.file_size
+                            total_compressed += info.compress_size
+
+                        try:
+                            dt = datetime.datetime(*info.date_time[:6])
+                            date_str = dt.strftime("%Y-%m-%d %H:%M")
+                        except Exception:
+                            date_str = "--"
+
+                        entries.append({
+                            "name": info.filename.rstrip("/"),
+                            "is_dir": is_dir,
+                            "size": info.file_size if not is_dir else 0,
+                            "date": date_str
+                        })
+            except Exception:
+                pass
+        elif ext in (".tar", ".gz", ".tgz", ".bz2"):
+            mode = "r:*" if ext != ".gz" or file_path.endswith(".tar.gz") else "r:gz"
+            try:
+                with tarfile.open(file_path, mode) as tf:
+                    for m in tf.getmembers():
+                        is_dir = m.isdir()
+                        if is_dir:
+                            folder_count += 1
+                        else:
+                            file_count += 1
+                            total_uncompressed += m.size
+
+                        try:
+                            dt = datetime.datetime.fromtimestamp(m.mtime)
+                            date_str = dt.strftime("%Y-%m-%d %H:%M")
+                        except Exception:
+                            date_str = "--"
+
+                        entries.append({
+                            "name": m.name.rstrip("/"),
+                            "is_dir": is_dir,
+                            "size": m.size if not is_dir else 0,
+                            "date": date_str
+                        })
+            except Exception:
+                pass
+        elif ext == ".rar":
+            try:
+                import rarfile
+                # Auto-discover WinRAR UnRAR tool if installed
+                if not getattr(rarfile, "UNRAR_TOOL", None):
+                    for cand in [
+                        shutil.which("unrar"),
+                        shutil.which("winrar"),
+                        r"C:\Program Files\WinRAR\UnRAR.exe",
+                        r"C:\Program Files (x86)\WinRAR\UnRAR.exe"
+                    ]:
+                        if cand and os.path.exists(cand):
+                            rarfile.UNRAR_TOOL = cand
+                            break
+
+                with rarfile.RarFile(file_path, "r") as rf:
+                    for info in rf.infolist():
+                        is_dir = info.isdir()
+                        if is_dir:
+                            folder_count += 1
+                        else:
+                            file_count += 1
+                            total_uncompressed += info.file_size
+                            total_compressed += info.compress_size
+
+                        try:
+                            dt = datetime.datetime(*info.date_time[:6])
+                            date_str = dt.strftime("%Y-%m-%d %H:%M")
+                        except Exception:
+                            date_str = "--"
+
+                        entries.append({
+                            "name": info.filename.rstrip("/").rstrip("\\"),
+                            "is_dir": is_dir,
+                            "size": info.file_size if not is_dir else 0,
+                            "date": date_str
+                        })
+            except Exception as e:
+                print(f"[ArchiveDecoder] Error reading RAR file: {e}")
+        elif ext == ".7z":
+            try:
+                import py7zr
+                with py7zr.SevenZipFile(file_path, mode="r") as sz:
+                    for info in sz.list():
+                        is_dir = info.is_directory
+                        if is_dir:
+                            folder_count += 1
+                        else:
+                            file_count += 1
+                            total_uncompressed += info.uncompressed
+                            total_compressed += getattr(info, "compressed", 0) or 0
+
+                        try:
+                            dt = info.creationtime
+                            date_str = dt.strftime("%Y-%m-%d %H:%M") if dt else "--"
+                        except Exception:
+                            date_str = "--"
+
+                        entries.append({
+                            "name": info.filename.rstrip("/").rstrip("\\"),
+                            "is_dir": is_dir,
+                            "size": info.uncompressed if not is_dir else 0,
+                            "date": date_str
+                        })
+            except Exception as e:
+                print(f"[ArchiveDecoder] Error reading 7Z file: {e}")
+
+        # Sort: directories first, then alphabetical by name
+        entries.sort(key=lambda x: (0 if x["is_dir"] else 1, x["name"].lower()))
+
+        return {
+            "entries": entries,
+            "total_uncompressed": total_uncompressed,
+            "total_compressed": total_compressed,
+            "file_count": file_count,
+            "folder_count": folder_count
+        }
+
+    @classmethod
+    def _create_archive_card(cls, file_path: str, data: dict) -> QImage:
+        w, h = 680, 460
+        img = QImage(w, h, QImage.Format.Format_RGB32)
+        img.fill(QColor("#0B0E17"))
+
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        ext = Path(file_path).suffix.lower()
+        if ext == ".zip":
+            badge_text = "ZIP"
+            grad_c1 = "#B45309" # amber-700
+            badge_border = "#F59E0B"
+            badge_fg = "#FCD34D"
+        elif ext == ".rar":
+            badge_text = "RAR"
+            grad_c1 = "#701A75" # fuchsia-800
+            badge_border = "#C026D3"
+            badge_fg = "#F0ABFC"
+        elif ext == ".7z":
+            badge_text = "7Z"
+            grad_c1 = "#0E7490" # cyan-700
+            badge_border = "#06B6D4"
+            badge_fg = "#67E8F9"
+        else:
+            badge_text = "TAR" if "tar" in ext or ext in (".tgz", ".tar") else "GZ"
+            grad_c1 = "#334155" # slate-700
+            badge_border = "#64748B"
+            badge_fg = "#CBD5E1"
+
+        # 1. Header Banner Gradient (Themed by archive type)
+        grad = QLinearGradient(0, 0, w, 86)
+        grad.setColorAt(0.0, QColor(grad_c1))
+        grad.setColorAt(1.0, QColor("#1E1B4B")) # dark slate
+        painter.fillRect(0, 0, w, 86, grad)
+        painter.fillRect(0, 85, w, 1, QColor(badge_border))
+
+        # Emblem Icon Box (48x48)
+        painter.setBrush(QColor("#181424"))
+        painter.setPen(QPen(QColor(badge_border), 1.8))
+        painter.drawRoundedRect(18, 18, 50, 50, 10, 10)
+
+        painter.setPen(QColor(badge_fg))
+        painter.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        painter.drawText(18, 18, 50, 50, Qt.AlignmentFlag.AlignCenter, badge_text)
+
+        # Header Title
+        painter.setPen(QColor("#FFFFFF"))
+        painter.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        fname = Path(file_path).name
+        fm = QFontMetrics(painter.font())
+        elided_fname = fm.elidedText(fname, Qt.TextElideMode.ElideRight, w - 90)
+        painter.drawText(80, 42, elided_fname)
+
+        # Summary Stats Row
+        file_cnt = data["file_count"]
+        folder_cnt = data["folder_count"]
+        uncomp_str = cls._format_size(data["total_uncompressed"])
+        comp_sz = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        comp_str = cls._format_size(comp_sz)
+
+        stats_text = f"📁 {file_cnt} Files, {folder_cnt} Folders  •  💾 {uncomp_str} Uncompressed ({comp_str} Archive)"
+        painter.setPen(QColor("#E2E8F0"))
+        painter.setFont(QFont("Segoe UI", 10))
+        painter.drawText(80, 66, stats_text)
+
+        # 2. Table Column Header Bar
+        painter.fillRect(16, 96, w - 32, 28, QColor("#141B2D"))
+        painter.setPen(QColor("#334155"))
+        painter.drawRect(16, 96, w - 32, 28)
+
+        painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        painter.setPen(QColor("#94A3B8"))
+        painter.drawText(28, 114, "NAME")
+        painter.drawText(460, 114, "SIZE")
+        painter.drawText(560, 114, "DATE MODIFIED")
+
+        # 3. Render Table Rows
+        entries = data["entries"]
+        max_rows = 11
+        row_y = 126
+        row_height = 25
+
+        row_font = QFont("Segoe UI", 9)
+        painter.setFont(row_font)
+        fm_row = QFontMetrics(row_font)
+
+        for i, item in enumerate(entries[:max_rows]):
+            bg_color = QColor("#0E1424") if i % 2 == 0 else QColor("#111827")
+            painter.fillRect(16, row_y, w - 32, row_height, bg_color)
+
+            # Icon
+            icon = cls._get_item_icon(item["name"], item["is_dir"])
+            name_text = f"{icon}  {item['name']}"
+            elided_name = fm_row.elidedText(name_text, Qt.TextElideMode.ElideMiddle, 410)
+
+            painter.setPen(QColor("#F8FAFC") if not item["is_dir"] else QColor("#FCD34D"))
+            painter.drawText(26, row_y + 17, elided_name)
+
+            # Size
+            size_str = cls._format_size(item["size"]) if not item["is_dir"] else "--"
+            painter.setPen(QColor("#38BDF8"))
+            painter.drawText(460, row_y + 17, size_str)
+
+            # Date
+            painter.setPen(QColor("#64748B"))
+            painter.drawText(560, row_y + 17, item["date"][:16])
+
+            row_y += row_height
+
+        # 4. Footer summary if overflow
+        total_items = len(entries)
+        if total_items > max_rows:
+            overflow_count = total_items - max_rows
+            painter.fillRect(16, 412, w - 32, 34, QColor("#111625"))
+            painter.setPen(QPen(QColor("#1E293B"), 1))
+            painter.drawRect(16, 412, w - 32, 34)
+
+            painter.setPen(QColor("#F59E0B"))
+            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            painter.drawText(16, 412, w - 32, 34, Qt.AlignmentFlag.AlignCenter,
+                             f"📦 ... and {overflow_count} more items (Total: {total_items} items in archive)")
+        else:
+            # Bottom border
+            painter.fillRect(16, row_y, w - 32, 1, QColor("#1E293B"))
+
+        return img
+
+    @classmethod
+    def decode(cls, file_path: str, max_size: int = 1440) -> PreviewResult:
+        size = os.path.getsize(file_path)
+        data = cls._read_archive_entries(file_path)
+        card = cls._create_archive_card(file_path, data)
+
+        ext = Path(file_path).suffix.lower()
+        fmt_name = "ZIP Archive" if ext == ".zip" else f"{ext.upper().lstrip('.')} Archive"
+        uncomp_str = cls._format_size(data["total_uncompressed"])
+
+        return PreviewResult(
+            qimage=card,
+            width=card.width(),
+            height=card.height(),
+            mode="Archive Grid",
+            format_name=fmt_name,
+            file_size=size,
+            extra_info=f"{data['file_count']} Files, {data['folder_count']} Folders | {uncomp_str}"
+        )
+
 class DecoderManager:
     """Master decoder dispatching files to the appropriate zero-lag engine."""
     DECODERS = {
+        # Archives & Compressed Packages
+        ".zip": ArchiveDecoder,
+        ".rar": ArchiveDecoder,
+        ".7z":  ArchiveDecoder,
+        ".tar": ArchiveDecoder,
+        ".gz":  ArchiveDecoder,
+        ".tgz": ArchiveDecoder,
+        ".bz2": ArchiveDecoder,
         # Photoshop
         ".psd": PsdDecoder,
         ".psb": PsdDecoder,

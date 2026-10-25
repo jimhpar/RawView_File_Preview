@@ -47,4 +47,6 @@ keygen*
 *.cer
 *.key
 file_version_info.txt
+*.pdb
+scratch/
 

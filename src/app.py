@@ -37,6 +37,7 @@ from src.core.icons import create_app_icon
 from src.ui.preview_window import FloatingPreviewHUD
 from src.ui.tray_icon import TrayManager
 from src.ui.status_hud import StatusToastHUD
+from src.core.thumbnail_server import ThumbnailPipeServer, generate_headless_thumbnail
 
 class GlobalHotkeyFilter(QAbstractNativeEventFilter, QObject):
     hotkey_triggered = pyqtSignal()
@@ -226,7 +227,11 @@ class RawViewApp(QObject):
         # Start Hover Monitoring
         self.hover_monitor.start()
 
-        # 5. Deferred Weekly Background Update Check (10s after startup)
+        # 5. Always-Active Windows Explorer Thumbnail IPC Server (Serves thumbnails even when hover is toggled off)
+        self.thumbnail_server = ThumbnailPipeServer()
+        self.thumbnail_server.start()
+
+        # 6. Deferred Weekly Background Update Check (10s after startup)
         QTimer.singleShot(10000, self._check_updates_if_due)
 
     def _on_file_hovered(self, file_path: str, screen_x: int, screen_y: int):
@@ -375,6 +380,11 @@ class RawViewApp(QObject):
             except Exception:
                 pass
         self.hover_monitor.stop()
+        if hasattr(self, "thumbnail_server") and self.thumbnail_server:
+            try:
+                self.thumbnail_server.stop()
+            except Exception:
+                pass
         self.preview_hud.close()
         QApplication.quit()
 
@@ -409,7 +419,18 @@ def main():
     parser = argparse.ArgumentParser(description=f"{APP_NAME} {APP_VERSION}")
     parser.add_argument("--minimized", action="store_true", help="Start minimized to System Tray")
     parser.add_argument("--settings", action="store_true", help="Open settings dialog immediately")
+    parser.add_argument("--headless-thumb", nargs=3, metavar=("FILE", "SIZE", "OUT_BMP"), help="Generate a thumbnail headless and exit")
     args = parser.parse_args()
+
+    # Fast Headless Worker for Explorer Thumbnails (bypasses single-instance check)
+    if args.headless_thumb:
+        file_path, size_str, out_bmp = args.headless_thumb
+        try:
+            sz = int(size_str)
+        except ValueError:
+            sz = 256
+        ok = generate_headless_thumbnail(file_path, sz, out_bmp)
+        sys.exit(0 if ok else 1)
 
     # Enforce Single Instance
     if not check_single_instance():
