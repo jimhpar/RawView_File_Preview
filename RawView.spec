@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('assets', 'assets')]
 binaries = []
-hiddenimports = ['rawpy', 'PyQt6.QtSvg', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets', 'pypdfium2', 'pymupdf', 'fitz', 'psd_tools', 'PIL', 'PIL.Image', 'PIL.TiffImagePlugin', 'PIL.PsdImagePlugin', 'uiautomation', 'comtypes', 'win32gui', 'win32process', 'win32api', 'win32con', 'striprtf', 'src.core.bijoy_converter', 'src.core.updater', 'src.ui.update_dialog', 'src.core.thumbnail_server', 'rarfile', 'py7zr', 'win32pipe', 'win32file', 'win32event', 'winerror']
+hiddenimports = ['rawpy', 'PyQt6.QtSvg', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets', 'pypdfium2', 'pymupdf', 'fitz', 'psd_tools', 'PIL', 'PIL.Image', 'PIL.TiffImagePlugin', 'PIL.PsdImagePlugin', 'uiautomation', 'comtypes', 'win32gui', 'win32process', 'win32api', 'win32con', 'striprtf', 'src.core.bijoy_converter', 'src.core.updater', 'src.ui.update_dialog', 'src.core.thumbnail_server', 'rarfile', 'py7zr', 'win32pipe', 'win32file', 'win32event', 'winerror', 'src.core.shell_icon_repair']
 tmp_ret = collect_all('pypdfium2')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('pymupdf')

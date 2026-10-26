@@ -53,6 +53,8 @@ Source: "..\dist\RawView\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 Source: "..\dist\RawView\RawViewThumbnailProvider.dll"; DestDir: "{app}"; Flags: ignoreversion regserver restartreplace
 Source: "..\assets\app_icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "..\assets\checkmark.svg"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\assets\ps_badge.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\assets\ai_badge.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "..\certs\RawView_RootCA.cer"; DestDir: "{app}\certs"; Flags: ignoreversion
 
 [Icons]
@@ -81,6 +83,8 @@ Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewRefreshFolderThumbs
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewRefreshFolderThumbs\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" --refresh-folder ""%1"""; Flags: uninsdeletekey
 
 [Run]
+; Auto-repair shell icons and associations in logged-in user context
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--repair-shell-icons"; Flags: runhidden runasoriginaluser waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]

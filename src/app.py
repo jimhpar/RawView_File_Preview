@@ -234,6 +234,20 @@ class RawViewApp(QObject):
         # 6. Deferred Weekly Background Update Check (10s after startup)
         QTimer.singleShot(10000, self._check_updates_if_due)
 
+        # 7. Asynchronous Shell Icon Self-Repair (runs 2s after startup in daemon thread)
+        # Guarantees HKCU shadow keys and Adobe DefaultIcon associations are always healthy on every user machine.
+        if IS_WINDOWS:
+            import threading
+            def _async_icon_repair():
+                try:
+                    import time
+                    time.sleep(2)
+                    from src.core.shell_icon_repair import run_full_shell_repair
+                    run_full_shell_repair()
+                except Exception:
+                    pass
+            threading.Thread(target=_async_icon_repair, daemon=True).start()
+
     def _on_file_hovered(self, file_path: str, screen_x: int, screen_y: int):
         is_ftp = file_path.startswith("ftp://") or file_path.startswith("ftps://")
         if not is_ftp and not os.path.exists(file_path):
@@ -424,7 +438,18 @@ def main():
     parser.add_argument("--headless-thumb", nargs=3, metavar=("FILE", "SIZE", "OUT_BMP"), help="Generate a thumbnail headless and exit")
     parser.add_argument("--refresh-thumb", metavar="FILE", help="Refresh thumbnail for a specific file")
     parser.add_argument("--refresh-folder", metavar="DIR", help="Refresh thumbnails for all items in a folder")
+    parser.add_argument("--repair-shell-icons", action="store_true", help="Repair Windows Shell icon associations and clear stale icon caches")
     args = parser.parse_args()
+
+    # Fast Repair Action: Shell Icons (bypasses single-instance check)
+    if args.repair_shell_icons:
+        if IS_WINDOWS:
+            try:
+                from src.core.shell_icon_repair import run_full_shell_repair
+                run_full_shell_repair()
+            except Exception:
+                pass
+        sys.exit(0)
 
     # Fast Headless Worker for Explorer Thumbnails (bypasses single-instance check)
     if args.headless_thumb:

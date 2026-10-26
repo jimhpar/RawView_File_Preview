@@ -7,24 +7,14 @@
 echo [*] Stopping lingering RawView processes...
 taskkill /F /IM RawView.exe >nul 2>&1
 
-echo [*] Cleaning corrupted HKCU shadow registry keys...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$exts = @('.psd','.psb','.ai','.eps','.pdf','.cr2','.cr3','.nef','.arw','.dng','.svg','.zip','.rar','.7z');" ^
-  "foreach ($ext in $exts) {" ^
-  "  Remove-Item -Path \"HKCU:\Software\Classes\$ext\ShellEx\" -Recurse -Force -ErrorAction SilentlyContinue;" ^
-  "  Remove-Item -Path \"HKCU:\Software\Classes\SystemFileAssociations\$ext\ShellEx\" -Recurse -Force -ErrorAction SilentlyContinue;" ^
-  "  $k = Get-Item -Path \"HKCU:\Software\Classes\$ext\" -ErrorAction SilentlyContinue;" ^
-  "  if ($k -and $k.SubKeyCount -eq 0 -and [string]::IsNullOrEmpty($k.GetValue(''))) {" ^
-  "    Remove-Item -Path \"HKCU:\Software\Classes\$ext\" -Force -ErrorAction SilentlyContinue;" ^
-  "  }" ^
-  "}" ^
-  "Get-ChildItem -Path 'HKCU:\Software\Classes' -ErrorAction SilentlyContinue | Where-Object {" ^
-  "  $_.PSChildName -like 'Photoshop.Image.*' -or $_.PSChildName -like 'Adobe.Illustrator.*' -or $_.PSChildName -like 'Photoshop.PSBFile.*'" ^
-  "} | ForEach-Object {" ^
-  "  $sub = Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue;" ^
-  "  $hasIcon = Test-Path \"$($_.PSPath)\DefaultIcon\";" ^
-  "  if (-not $hasIcon) { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue }" ^
-  "}"
+echo [*] Cleaning corrupted HKCU shadow registry keys and repairing icons...
+if exist "%ProgramFiles%\RawView\RawView.exe" (
+  "%ProgramFiles%\RawView\RawView.exe" --repair-shell-icons
+) else if exist "%LocalAppData%\Programs\RawView\RawView.exe" (
+  "%LocalAppData%\Programs\RawView\RawView.exe" --repair-shell-icons
+) else (
+  python -c "from src.core.shell_icon_repair import run_full_shell_repair; run_full_shell_repair()" >nul 2>&1
+)
 
 echo [*] Ensuring Windows Explorer displays App Icon badges on thumbnails...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowTypeOverlay" /t REG_DWORD /d 1 /f >nul 2>&1

@@ -286,7 +286,15 @@ def refresh_file_thumbnail(file_path: str) -> bool:
     # 1. Clear cached thumbnails for this file
     invalidate_file_thumbnail_cache(file_path)
 
-    # 2. Pre-generate standard 256px thumbnail
+    # 2. Touch file timestamp (+1.0s) so Windows Explorer's thumbcache_*.db drops stale thumbnail
+    if IS_WINDOWS:
+        try:
+            from src.core.shell_icon_repair import touch_file_for_shell_regeneration
+            touch_file_for_shell_regeneration(file_path)
+        except Exception:
+            pass
+
+    # 3. Pre-generate standard 256px thumbnail
     try:
         from PyQt6.QtWidgets import QApplication
         app = QApplication.instance()
@@ -300,13 +308,13 @@ def refresh_file_thumbnail(file_path: str) -> bool:
     except Exception as e:
         print(f"[ThumbnailServer] Re-rendering error for {file_path}: {e}")
 
-    # 3. Notify Windows Shell to update this item
+    # 4. Notify Windows Shell to update this item
     if IS_WINDOWS:
         try:
             import ctypes
             w_path = ctypes.c_wchar_p(str(Path(file_path).resolve()))
-            ctypes.windll.shell32.SHChangeNotify(0x00002000, 0x0005, w_path, None) # SHCNE_UPDATEITEM
-            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)   # SHCNE_ASSOCCHANGED
+            ctypes.windll.shell32.SHChangeNotify(0x00002000, 0x0005, w_path, None)  # SHCNE_UPDATEITEM
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)    # SHCNE_ASSOCCHANGED
         except Exception:
             pass
 
@@ -322,12 +330,19 @@ def refresh_folder_thumbnails(folder_path: str) -> int:
 
     refreshed_count = 0
     try:
+        if IS_WINDOWS:
+            from src.core.shell_icon_repair import touch_file_for_shell_regeneration
+        else:
+            touch_file_for_shell_regeneration = None
+
         for entry in os.listdir(folder_path):
             full_p = os.path.join(folder_path, entry)
             if os.path.isfile(full_p):
                 ext = Path(full_p).suffix.lower()
                 if ext in valid_exts:
                     invalidate_file_thumbnail_cache(full_p)
+                    if touch_file_for_shell_regeneration:
+                        touch_file_for_shell_regeneration(full_p)
                     refreshed_count += 1
     except Exception as e:
         print(f"[ThumbnailServer] Folder refresh error for {folder_path}: {e}")
@@ -337,8 +352,8 @@ def refresh_folder_thumbnails(folder_path: str) -> int:
         try:
             import ctypes
             w_dir = ctypes.c_wchar_p(str(Path(folder_path).resolve()))
-            ctypes.windll.shell32.SHChangeNotify(0x00001000, 0x0005, w_dir, None) # SHCNE_UPDATEDIR
-            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)   # SHCNE_ASSOCCHANGED
+            ctypes.windll.shell32.SHChangeNotify(0x00001000, 0x0005, w_dir, None)  # SHCNE_UPDATEDIR
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)    # SHCNE_ASSOCCHANGED
         except Exception:
             pass
 

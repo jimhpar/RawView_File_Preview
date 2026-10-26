@@ -231,6 +231,7 @@ def build(cert_path: str = "", cert_pass: str = ""):
         "--hidden-import=win32file",
         "--hidden-import=win32event",
         "--hidden-import=winerror",
+        "--hidden-import=src.core.shell_icon_repair",
         str(BASE_DIR / "src" / "app.py")
     ]
 

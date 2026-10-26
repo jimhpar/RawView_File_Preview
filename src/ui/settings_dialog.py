@@ -605,7 +605,7 @@ class SettingsDialog(QDialog):
         cache_layout.addWidget(self.cache_info_label)
         cache_layout.addStretch()
 
-        clear_btn = QPushButton("Clear Cache")
+        clear_btn = QPushButton("🧹 Clear Cache & Repair Icons")
         clear_btn.clicked.connect(self._clear_cache)
         cache_layout.addWidget(clear_btn)
         main_layout.addWidget(cache_group)
@@ -864,18 +864,40 @@ class SettingsDialog(QDialog):
     def _get_cache_size_mb(self) -> float:
         total = 0
         if CACHE_DIR.exists():
-            for f in CACHE_DIR.glob("*"):
-                if f.is_file():
-                    total += f.stat().st_size
+            for root, _, files in os.walk(CACHE_DIR):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                    except Exception:
+                        pass
         return total / (1024.0 * 1024.0)
 
     def _clear_cache(self):
         try:
-            for f in CACHE_DIR.glob("*"):
-                if f.is_file():
-                    f.unlink(missing_ok=True)
+            import shutil
+            if CACHE_DIR.exists():
+                for item in CACHE_DIR.iterdir():
+                    try:
+                        if item.is_file():
+                            item.unlink(missing_ok=True)
+                        elif item.is_dir():
+                            shutil.rmtree(item, ignore_errors=True)
+                    except Exception:
+                        pass
+
+            if IS_WINDOWS:
+                try:
+                    from src.core.shell_icon_repair import run_full_shell_repair
+                    run_full_shell_repair()
+                except Exception:
+                    pass
+
             self.cache_info_label.setText("Thumbnail Cache: 0.0 MB")
-            QMessageBox.information(self, "Cache Cleared", "Thumbnail cache has been successfully wiped.")
+            QMessageBox.information(
+                self,
+                "Cache Cleared & Icons Repaired",
+                "Thumbnail cache has been wiped and Windows Explorer shell icon associations have been refreshed."
+            )
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to clear cache: {e}")
 
