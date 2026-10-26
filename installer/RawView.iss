@@ -69,8 +69,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; Enable App Badges (Ps, Ai, PDF icon overlay) on thumbnails in Windows Explorer
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueType: dword; ValueName: "ShowTypeOverlay"; ValueData: "1"
 
-; Remove DisableProcessIsolation so Windows runs thumbnail provider in isolated DllHost.exe surrogate
-Root: HKLM; Subkey: "Software\Classes\CLSID\{{78FDF5BA-0E57-4B06-8230-1340EE5EA83B}"; ValueName: "DisableProcessIsolation"; Flags: deletevalue
+; Set DisableProcessIsolation=1: REQUIRED by Windows Explorer to execute IInitializeWithFile and IInitializeWithItem
+Root: HKLM; Subkey: "Software\Classes\CLSID\{{78FDF5BA-0E57-4B06-8230-1340EE5EA83B}"; ValueType: dword; ValueName: "DisableProcessIsolation"; ValueData: "1"
+Root: HKCU; Subkey: "Software\Classes\CLSID\{{78FDF5BA-0E57-4B06-8230-1340EE5EA83B}"; ValueType: dword; ValueName: "DisableProcessIsolation"; ValueData: "1"
 
 ; Windows Explorer Context Menu: Refresh Thumbnails on Directory Background
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueData: "Refresh Thumbnails"; Flags: uninsdeletekey

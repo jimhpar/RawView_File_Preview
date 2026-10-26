@@ -206,12 +206,9 @@ STDAPI DllRegisterServer(void) {
     SetRegistryValue(HKEY_LOCAL_MACHINE, clsidSubKey, L"", L"RawView Thumbnail Provider");
     SetRegistryValue(HKEY_LOCAL_MACHINE, clsidSubKey + L"\\InprocServer32", L"", szDllPath);
     SetRegistryValue(HKEY_LOCAL_MACHINE, clsidSubKey + L"\\InprocServer32", L"ThreadingModel", L"Apartment");
-    // Ensure DisableProcessIsolation is removed so Windows uses standard isolated surrogate (DllHost.exe)
-    HKEY hClsid;
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, clsidSubKey.c_str(), 0, KEY_SET_VALUE, &hClsid) == ERROR_SUCCESS) {
-        RegDeleteValueW(hClsid, L"DisableProcessIsolation");
-        RegCloseKey(hClsid);
-    }
+    // Explicitly set DisableProcessIsolation=1: REQUIRED by Windows Shell to execute IInitializeWithFile and IInitializeWithItem
+    SetRegistryDword(HKEY_LOCAL_MACHINE, clsidSubKey, L"DisableProcessIsolation", 1);
+    SetRegistryDword(HKEY_CURRENT_USER, clsidSubKey, L"DisableProcessIsolation", 1);
 
     // 3. Register thumbnail provider under SystemFileAssociations and extension in HKLM
     for (const wchar_t* ext : SUPPORTED_EXTENSIONS) {

@@ -368,8 +368,22 @@ start explorer.exe
         except Exception:
             pass
 
+def ensure_process_isolation_disabled():
+    """Ensures DisableProcessIsolation=1 is set in HKCU so Windows Explorer calls IInitializeWithFile/IInitializeWithItem."""
+    try:
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Classes\CLSID\{78FDF5BA-0E57-4B06-8230-1340EE5EA83B}",
+            0,
+            winreg.KEY_SET_VALUE
+        ) as k:
+            winreg.SetValueEx(k, "DisableProcessIsolation", 0, winreg.REG_DWORD, 1)
+    except Exception:
+        pass
+
 def run_full_shell_repair():
     """Runs the complete self-healing suite for Windows Explorer shell icons."""
     clean_user_shadow_keys()
+    ensure_process_isolation_disabled()
     repair_adobe_associations()
     flush_shell_icon_cache()
