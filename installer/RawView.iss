@@ -65,7 +65,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "RawView"; ValueData: """{app}\{#MyAppExeName}"" --minimized"; Flags: uninsdeletevalue; Tasks: autostart
 
 ; Enable App Badges (Ps, Ai, PDF icon overlay) on thumbnails in Windows Explorer
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueType: dword; ValueName: "ShowTypeOverlay"; ValueData: "1"; Flags: uninsneveruninstall
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueType: dword; ValueName: "ShowTypeOverlay"; ValueData: "1"
 
 ; Windows Explorer Context Menu: Refresh Thumbnails on Directory Background
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueData: "Refresh Thumbnails"; Flags: uninsdeletekey
