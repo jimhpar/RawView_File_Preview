@@ -499,21 +499,34 @@ class ExplorerHoverMonitor(QObject):
                     self._clear_hover()
             return
 
-        # Cursor is settled/dwelling: resolve once per settled position
+        # Cursor is settled/dwelling: resolve once per settled position or retry progressively if unhovered
         dwell_ms = now - self.settle_start_time
         if dwell_ms >= self.hover_delay_ms:
+            need_resolve = False
             if cur_pos != getattr(self, "_last_resolved_pos", QPoint(-1, -1)):
-                self._last_resolved_pos = cur_pos
-                self._resolve_and_trigger_hover(x, y, phys_x, phys_y)
+                need_resolve = True
+                self._resolve_retries = 0
+            elif not self.is_hover_active and getattr(self, "_resolve_retries", 0) < 5:
+                # Progressive retry every 60ms while resting at same position without moving
+                if now - getattr(self, "_last_resolve_time", 0) >= 60:
+                    need_resolve = True
+
+            if need_resolve:
+                self._last_resolve_time = now
+                self._resolve_retries = getattr(self, "_resolve_retries", 0) + 1
+                success = self._resolve_and_trigger_hover(x, y, phys_x, phys_y)
+                if success:
+                    self._last_resolved_pos = cur_pos
 
     def _clear_hover(self):
         self.is_hover_active = False
         self.active_file_path = ""
         self.active_rect = None
         self._last_resolved_pos = QPoint(-1, -1)
+        self._resolve_retries = 0
         self.hover_cleared.emit()
 
-    def _resolve_and_trigger_hover(self, x: int, y: int, phys_x: int = None, phys_y: int = None):
+    def _resolve_and_trigger_hover(self, x: int, y: int, phys_x: int = None, phys_y: int = None) -> bool:
         if phys_x is None:
             phys_x = x
         if phys_y is None:
@@ -537,7 +550,7 @@ class ExplorerHoverMonitor(QObject):
                         self.is_hover_active = True
                         # Send Qt logical coordinates (x, y) so QGuiApplication.screenAt and move(pos) accurately place HUD on screen
                         self.file_hovered.emit(file_path, x, y)
-                    return
+                    return True
         
         # If not hovering over a valid file and we were active
         if self.is_hover_active and not self.preview_is_pinned:
@@ -729,8 +742,23 @@ class ExplorerHoverMonitor(QObject):
             if folder_hint and folder_hint.lower() in ("folderview", "desktop"):
                 is_desktop = True
 
+            # Extract active tab / window title from root window for 100% accurate Windows 11 Tab matching
+            window_title_hint = ""
+            root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT) if WINDOWS_HOOK_AVAILABLE else 0
+            if root_hwnd:
+                try:
+                    w_text = win32gui.GetWindowText(root_hwnd)
+                    if w_text:
+                        w_clean = re.sub(r'\s*[-–—]\s*File Explorer.*$', '', w_text, flags=re.IGNORECASE).strip()
+                        if w_clean:
+                            window_title_hint = w_clean
+                except Exception:
+                    pass
+
             # 1. Query active Explorer COM context under cursor for this specific window and all its tabs
-            priority_folder, focused_paths, selected_paths, tab_folders = self._get_active_explorer_context(x, y, expected_folder_name=folder_hint)
+            priority_folder, focused_paths, selected_paths, tab_folders = self._get_active_explorer_context(
+                x, y, expected_folder_name=window_title_hint or folder_hint
+            )
             candidate_folders = self._get_candidate_folders(priority_folder, tab_folders, is_explorer_window=is_explorer_window, is_desktop=is_desktop)
             if not candidate_folders:
                 return None, None
@@ -741,17 +769,29 @@ class ExplorerHoverMonitor(QObject):
             size_hints = []
 
             def is_valid_name(s: str) -> bool:
-                if not s or "\n" in s or "\r" in s:
+                if not s:
                     return False
-                lower = s.lower().strip()
+                clean = re.sub(r'[\r\n\t]+', ' ', s).strip()
+                if not clean:
+                    return False
+                lower = clean.lower()
                 if any(lower.startswith(k) for k in ("item type:", "type:", "size:", "date modified:", "dimensions:", "rating:")):
                     return False
                 return True
 
+            def add_name_cand(raw_str: str):
+                if not raw_str:
+                    return
+                # Normalize line-breaks and multiple whitespace (crucial for multiline names on grid/icon views)
+                clean = " ".join(re.sub(r'[\r\n\t]+', ' ', raw_str).split())
+                if clean and is_valid_name(clean):
+                    if clean not in names_to_try:
+                        names_to_try.append(clean)
+
             if elem != row_control and is_valid_name(elem.Name):
-                names_to_try.append(elem.Name.strip())
+                add_name_cand(elem.Name)
             if is_valid_name(row_control.Name):
-                names_to_try.append(row_control.Name.strip())
+                add_name_cand(row_control.Name)
 
             row_help = getattr(row_control, 'HelpText', '')
             if row_help:
@@ -761,7 +801,7 @@ class ExplorerHoverMonitor(QObject):
             if row_item_type:
                 type_hints.append(row_item_type)
 
-            # Inspect child columns
+            # Inspect child columns & Win11 UIItemsView ValuePattern
             try:
                 for child in row_control.GetChildren():
                     c_name = child.Name
@@ -769,17 +809,29 @@ class ExplorerHoverMonitor(QObject):
                     c_help = getattr(child, "HelpText", "")
                     c_type = getattr(child, "ItemType", "")
 
-                    if c_name:
-                        if c_auto_id == "System.ItemNameDisplay" and is_valid_name(c_name):
-                            names_to_try.append(c_name.strip())
-                        elif is_valid_name(c_name) and not any(k in c_name.lower() for k in ("kb", "mb", "gb", "document", "image", "file", "format")):
-                            names_to_try.append(c_name.strip())
+                    # Check ValuePattern for EditControl (System.ItemNameDisplay on Win11 UIItemsView)
+                    c_val = ""
+                    try:
+                        val_pat = child.GetPattern(auto.PatternId.ValuePattern)
+                        if val_pat and hasattr(val_pat, "Value"):
+                            c_val = str(val_pat.Value or "")
+                    except Exception:
+                        pass
 
-                        if any(k in c_name.lower() for k in ("document", "image", "file", "format", "postscript", "pdf", "artwork", "tiff", "raw", "photoshop", "illustrator")):
-                            type_hints.append(c_name)
-                        if any(k in c_name.lower() for k in ("kb", "mb", "gb", "bytes", "b")) and re.search(r"\d", c_name):
-                            size_hints.append(c_name)
-                    
+                    if c_val:
+                        add_name_cand(c_val)
+
+                    if c_name and c_name.lower() != "name":
+                        if c_auto_id == "System.ItemNameDisplay":
+                            add_name_cand(c_name)
+                        elif not any(k in c_name.lower() for k in ("kb", "mb", "gb", "document", "image", "file", "format")):
+                            add_name_cand(c_name)
+
+                    if any(k in c_name.lower() for k in ("document", "image", "file", "format", "postscript", "pdf", "artwork", "tiff", "raw", "photoshop", "illustrator")):
+                        type_hints.append(c_name)
+                    if any(k in c_name.lower() for k in ("kb", "mb", "gb", "bytes", "b")) and re.search(r"\d", c_name):
+                        size_hints.append(c_name)
+                
                     if c_auto_id == "System.ItemTypeText" and c_name:
                         type_hints.append(c_name)
                     elif c_auto_id == "System.Size" and c_name:
@@ -806,7 +858,7 @@ class ExplorerHoverMonitor(QObject):
 
             # 3. Explicit File Extension Check:
             # If the item name already has an explicit extension (e.g. "Kids.jpg", "Archive.zip"),
-            # and that extension is NOT enabled in settings, immediately abort! Never guess other extensions!
+            # and that extension is NOT enabled in settings, abort!
             for raw_n in names_to_try:
                 n_ext = Path(raw_n).suffix.lower()
                 if n_ext and len(n_ext) in range(2, 7) and not n_ext[1:].isdigit():
@@ -824,8 +876,7 @@ class ExplorerHoverMonitor(QObject):
             if inferred_exts:
                 supported_inferred = [e for e in inferred_exts if e in self.supported_exts_set]
                 if not supported_inferred:
-                    # Item is definitely of a disabled or unsupported format (e.g. JPG when basic images is disabled).
-                    # Do NOT fall back to guessing .psd or other formats!
+                    # Item is definitely of a disabled or unsupported format.
                     return None, None
                 target_exts = supported_inferred
 
@@ -913,11 +964,15 @@ class ExplorerHoverMonitor(QObject):
                         if single_ext in self.supported_exts_set:
                             return single_p, bounding_box
                         else:
-                            # The file exists in the active folder, but its format is disabled/unsupported.
-                            # Never search other folders!
                             return None, None
 
                     # CASE 2: Multiple files on disk match this base name (Stem Collision e.g. .psd and .jpg)
+                    # First, check if clean_name or an explicit extension candidate matches exactly one file
+                    exact_name_match = [p for p in matching_disk_files if Path(p).name.lower() == clean_name.lower()]
+                    if len(exact_name_match) == 1:
+                        if Path(exact_name_match[0]).suffix.lower() in self.supported_exts_set:
+                            return exact_name_match[0], bounding_box
+
                     # A. Type hint disambiguation
                     if target_exts:
                         type_matched = [p for p in matching_disk_files if Path(p).suffix.lower() in target_exts]
@@ -936,9 +991,6 @@ class ExplorerHoverMonitor(QObject):
                         if best_diff < max(parsed_kb * 0.40, 250):
                             if Path(best_p).suffix.lower() in self.supported_exts_set:
                                 return best_p, bounding_box
-                            else:
-                                # The hovered item matches a disabled file (e.g. 203 KB JPG instead of 93 MB PSD)
-                                return None, None
 
                     # C. COM Focused / Selected item match
                     com_matches = [p for p in matching_disk_files if p in all_com_cands]
@@ -946,18 +998,16 @@ class ExplorerHoverMonitor(QObject):
                         com_p = com_matches[0]
                         if Path(com_p).suffix.lower() in self.supported_exts_set:
                             return com_p, bounding_box
-                        else:
-                            return None, None
 
-                    # D. If still ambiguous and some files are unsupported/disabled:
-                    # NEVER blindly return a supported file if an unsupported file also shares the stem!
-                    has_unsupported = any(Path(p).suffix.lower() not in self.supported_exts_set for p in matching_disk_files)
-                    if has_unsupported:
-                        return None, None
-
-                    # If all matching files are supported, pick the first
+                    # D. Smart Format Prioritization for Supported Formats:
+                    # When a creative design/pro format (.psd, .ai, .eps, .pdf) and a standard image share the stem,
+                    # prioritize the design/vector format for RawView preview!
                     supported_only = [p for p in matching_disk_files if Path(p).suffix.lower() in self.supported_exts_set]
                     if supported_only:
+                        design_fmts = {".psd", ".psb", ".ai", ".eps", ".pdf", ".svg", ".svgz", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf"}
+                        pro_matches = [p for p in supported_only if Path(p).suffix.lower() in design_fmts]
+                        if pro_matches:
+                            return pro_matches[0], bounding_box
                         return supported_only[0], bounding_box
 
         except Exception:

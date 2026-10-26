@@ -57,6 +57,5 @@ private:
 
     bool FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha);
     bool FetchFromDiskCache(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha);
-    bool FetchFromHeadlessWorker(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha);
     std::wstring GetCacheFilePath(UINT cx);
 };

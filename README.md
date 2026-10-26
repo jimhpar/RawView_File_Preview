@@ -1,4 +1,4 @@
-# RawView (v4.1.0)
+# RawView (v4.1.2)
 
 **RawView** is an ultra-fast, zero-lag Windows desktop utility that shows hardware-accelerated preview popups, multi-page document navigation, live video playback, and **permanent Windows Explorer folder grid thumbnails with native app icon overlay badges** for design, graphics, documents, Microsoft Office files, media projects, and camera RAW images.
 
@@ -6,7 +6,22 @@
 
 ## 🚀 Features
 
-- **🖼️ Permanent Windows Explorer Folder Grid Thumbnails & App Badges (NEW in v4.1.0)**:
+- **🔄 Right-Click "Refresh Thumbnail" Context Menu (NEW in v4.1.2)**:
+  - **Single File Refresh**: Right-click any supported file (`.psd`, `.ai`, `.eps`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.raw`, etc.) and select **"Refresh Thumbnail"** to instantly purge its cache and trigger Windows Explorer to redraw the thumbnail.
+  - **Active Folder Refresh**: Right-click empty background space or any folder without selecting a file and click **"Refresh All Thumbnails in Folder"** to invalidate and regenerate thumbnails for every item in that directory.
+  - **Status HUD Notification**: Displays a sleek, floating on-screen HUD toast badge confirming thumbnail refresh completion.
+- **🏷️ Reliable App Icon Overlay Badges System-Wide (NEW in v4.1.2)**:
+  - **Automatic Windows Explorer Configuration**: Automatically enables Windows `ShowTypeOverlay` registry setting across machines, guaranteeing that application overlay badges (`Ps`, `Ai`, `W`, `P`, `PDF`) render consistently in the bottom-right corner of all thumbnails.
+  - **Settings Dialog Toggle**: Interactive checkbox in Preferences (`Display App Icon Badges on Thumbnails`) to easily enable or disable overlay badges on demand.
+- **⚡ Zero-Click Instant Hover Preview Engine (NEW in v4.1.2)**:
+  - **Multiline Filename Wrapping**: Resolves multiline filename wrapping (`\r\n`) in Explorer icon/grid views without requiring a mouse click on the file first.
+  - **Windows 11 `UIItemsView` Support**: Leverages `ValuePattern` extraction for `System.ItemNameDisplay` controls in modern Windows 11 File Explorer.
+  - **Active Tab Resolution**: Extracts the active tab title directly from `win32gui.GetWindowText` to eliminate wrong-tab mismatches in multi-tab Explorer windows.
+  - **Progressive Dwell Retries**: Automatically retries resolution over consecutive timer ticks so hover triggers immediately without needing to re-enter or click.
+- **🔐 Digitally Signed Software (Authenticode - NEW in v4.1.2)**:
+  - **Code Signing**: All binaries (`RawView.exe`, `RawViewThumbnailProvider.dll`, and `RawView_v4.1.2_Setup.exe`) are digitally signed with Authenticode certificates.
+  - **Automated Root Installation**: Installer automatically configures the trusted certificate store for smooth, warning-free installation.
+- **🖼️ Permanent Windows Explorer Folder Grid Thumbnails & App Badges**:
   - **Direct Folder Previews**: Renders high-definition artwork thumbnails directly inside Windows Explorer folders for `.psd`, `.ai`, `.eps`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.raw`, `.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.svg`.
   - **Native App Type Overlay Badges**: Displays crisp application overlay badges (`Ps`, `Ai`, `W`, `P`, `PDF`) in the bottom-right corner of thumbnails.
   - **Always-Active 24/7 Service**: Folder thumbnail generation remains permanently active even when hover preview is toggled off (`Ctrl + \``).
@@ -70,16 +85,16 @@
 
 ## 🛠️ Building the Installer
 
-To compile the standalone `RawView_v4.1.0_Setup.exe` installer:
+To compile the standalone `RawView_v4.1.2_Setup.exe` installer:
 
 ```bash
 python build_release.py
 ```
 
-The installer will be generated in `dist_installer/RawView_v4.1.0_Setup.exe`.
+The installer will be generated and digitally signed in `dist_installer/RawView_v4.1.2_Setup.exe`.
 
 ---
 
 ## 🔐 Code Signing
 
-Free code signing for RawView is generously provided by the [SignPath Foundation](https://signpath.org/).
+RawView release builds are digitally signed with Authenticode certificates. The automated build pipeline in `build_release.py` automatically attaches verified Authenticode signatures to all binaries (`RawView.exe`, `RawViewThumbnailProvider.dll`, and `RawView_v4.1.2_Setup.exe`). The installer automatically provisions the trusted certificate store to guarantee seamless, warning-free installation.

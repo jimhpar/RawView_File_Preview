@@ -37,7 +37,9 @@ def get_thumb_cache_path(file_path: str, cx: int) -> Path:
         pass
 
     h = fnv1a_hash_64(file_path)
-    thumbs_dir = CACHE_DIR / "thumbs"
+    # Ensure this matches C++ CSIDL_LOCAL_APPDATA: %LOCALAPPDATA%\RawView\cache\thumbs
+    local_app_data = os.environ.get("LOCALAPPDATA") or str(CACHE_DIR.parent)
+    thumbs_dir = Path(local_app_data) / "RawView" / "cache" / "thumbs"
     thumbs_dir.mkdir(parents=True, exist_ok=True)
     return thumbs_dir / f"thumb_{h:x}_{mtime:x}_{cx}.bmp"
 
@@ -121,6 +123,26 @@ class ThumbnailPipeServer:
         except Exception:
             pass
 
+    def _get_security_attributes(self):
+        """Creates a SECURITY_ATTRIBUTES descriptor granting World access and Low Mandatory Level.
+        This allows medium-integrity explorer.exe and dllhost.exe to connect even if RawView was
+        launched with elevated administrator privileges."""
+        try:
+            import win32security
+            sa = win32security.SECURITY_ATTRIBUTES()
+            sa.bInheritHandle = False
+            # D:(A;;GA;;;WD) -> Discretionary ACL: Generic All to Everyone (WD)
+            # S:(ML;;NW;;;LW) -> Mandatory Label: Low Integrity (LW), No-Write-Up (NW)
+            sd = win32security.ConvertStringSecurityDescriptorToSecurityDescriptor(
+                "D:(A;;GA;;;WD)S:(ML;;NW;;;LW)",
+                win32security.SDDL_REVISION_1
+            )
+            sa.SECURITY_DESCRIPTOR = sd
+            return sa
+        except Exception as e:
+            print(f"[!] Warning: Failed to create custom pipe security descriptor: {e}")
+            return None
+
     def _run_server(self):
         try:
             import win32pipe
@@ -129,6 +151,8 @@ class ThumbnailPipeServer:
         except ImportError:
             print("[!] win32pipe not available. Thumbnail pipe server cannot start.")
             return
+
+        sa = self._get_security_attributes()
 
         while self.running:
             try:
@@ -143,11 +167,21 @@ class ThumbnailPipeServer:
                     1024 * 1024, # 1MB Out buffer
                     64 * 1024,   # 64KB In buffer
                     1000,        # 1s default timeout
-                    None
+                    sa
                 )
 
                 # Wait for Explorer client connection
-                win32pipe.ConnectNamedPipe(h_pipe, None)
+                try:
+                    win32pipe.ConnectNamedPipe(h_pipe, None)
+                except Exception as ce:
+                    # 535 is ERROR_PIPE_CONNECTED: client connected between CreateNamedPipe and ConnectNamedPipe
+                    winerror_code = getattr(ce, "winerror", None)
+                    if winerror_code != 535:
+                        try:
+                            win32file.CloseHandle(h_pipe)
+                        except Exception:
+                            pass
+                        continue
 
                 # Handle client in a worker thread to allow concurrent requests
                 t = threading.Thread(target=self._handle_client, args=(h_pipe,), daemon=True)
@@ -155,7 +189,7 @@ class ThumbnailPipeServer:
 
             except Exception as e:
                 if self.running:
-                    time.sleep(0.05)
+                    time.sleep(0.01)
 
     def _handle_client(self, h_pipe):
         try:
@@ -227,3 +261,85 @@ class ThumbnailPipeServer:
                 win32file.CloseHandle(h_pipe)
             except Exception:
                 pass
+
+def invalidate_file_thumbnail_cache(file_path: str):
+    """Deletes all cached BMP thumbnail resolutions for a specific file."""
+    try:
+        h = fnv1a_hash_64(file_path)
+        local_app_data = os.environ.get("LOCALAPPDATA") or str(CACHE_DIR.parent)
+        thumbs_dir = Path(local_app_data) / "RawView" / "cache" / "thumbs"
+        if thumbs_dir.exists():
+            prefix = f"thumb_{h:x}_"
+            for f in thumbs_dir.glob(f"{prefix}*.bmp"):
+                try:
+                    f.unlink(missing_ok=True)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[ThumbnailServer] Cache invalidation error for {file_path}: {e}")
+
+def refresh_file_thumbnail(file_path: str) -> bool:
+    """Refreshes and notifies Windows Shell to re-render the thumbnail for a specific file."""
+    if not os.path.exists(file_path):
+        return False
+
+    # 1. Clear cached thumbnails for this file
+    invalidate_file_thumbnail_cache(file_path)
+
+    # 2. Pre-generate standard 256px thumbnail
+    try:
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if not app:
+            app = QApplication(sys.argv[:1])
+
+        thumb = render_thumbnail(file_path, 256)
+        if thumb and not thumb.isNull():
+            cache_path = get_thumb_cache_path(file_path, 256)
+            save_thumbnail_bmp(thumb, cache_path)
+    except Exception as e:
+        print(f"[ThumbnailServer] Re-rendering error for {file_path}: {e}")
+
+    # 3. Notify Windows Shell to update this item
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            w_path = ctypes.c_wchar_p(str(Path(file_path).resolve()))
+            ctypes.windll.shell32.SHChangeNotify(0x00002000, 0x0005, w_path, None) # SHCNE_UPDATEITEM
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)   # SHCNE_ASSOCCHANGED
+        except Exception:
+            pass
+
+    return True
+
+def refresh_folder_thumbnails(folder_path: str) -> int:
+    """Invalidates and triggers shell refresh for all supported files in a folder."""
+    if not os.path.isdir(folder_path):
+        return 0
+
+    from src.core.config import SUPPORTED_EXTENSIONS
+    valid_exts = set(SUPPORTED_EXTENSIONS.keys())
+
+    refreshed_count = 0
+    try:
+        for entry in os.listdir(folder_path):
+            full_p = os.path.join(folder_path, entry)
+            if os.path.isfile(full_p):
+                ext = Path(full_p).suffix.lower()
+                if ext in valid_exts:
+                    invalidate_file_thumbnail_cache(full_p)
+                    refreshed_count += 1
+    except Exception as e:
+        print(f"[ThumbnailServer] Folder refresh error for {folder_path}: {e}")
+
+    # Notify Windows Explorer of the updated directory
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            w_dir = ctypes.c_wchar_p(str(Path(folder_path).resolve()))
+            ctypes.windll.shell32.SHChangeNotify(0x00001000, 0x0005, w_dir, None) # SHCNE_UPDATEDIR
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)   # SHCNE_ASSOCCHANGED
+        except Exception:
+            pass
+
+    return refreshed_count

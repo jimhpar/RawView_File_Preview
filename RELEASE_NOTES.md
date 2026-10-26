@@ -1,3 +1,38 @@
+# 🚀 RawView v4.1.2 Release Notes
+
+**RawView v4.1.2** delivers major stability and usability enhancements: **System-wide App Icon Badges on Thumbnails (`ShowTypeOverlay`)**, **Zero-Click Instant Hover Engine** resolving click-before-hover issues on wrapped long file names and Windows 11 `UIItemsView`, **Explorer Context Menu "Refresh Thumbnail"** for single files and active folder backgrounds, and **Authenticode Code Signing** for all binaries and the installer.
+
+---
+
+## 🌟 What's New in v4.1.2
+
+### 🏷️ 1. System-Wide App Icon Badges on Thumbnails (`ShowTypeOverlay`)
+* **Universal App Badges (Ps, Ai, PDF, etc.)**: Fixed an issue where other Windows machines did not display the application icon badge (e.g. Photoshop `Ps`, Illustrator `Ai`) on generated folder thumbnails.
+* **Explorer Advanced Setting Auto-Configuration**: Windows Explorer suppresses all thumbnail badges system-wide if `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\ShowTypeOverlay` is set to `0`. RawView now automatically ensures `ShowTypeOverlay` is set to `1` during installation, shell extension registration (`regsvr32`), and in the preferences UI.
+* **Settings Toggle & Shell Sync**: Added a dedicated "Display App Icon Badges on Thumbnails (Ps, Ai, PDF)" toggle in Settings that synchronizes with the Windows Registry and notifies the Shell immediately (`SHChangeNotify`).
+* **One-Click Diagnostic Script**: Included `fix_shell_icons.bat` for instant registry activation and Explorer shell restart.
+
+### ⚡ 2. Zero-Click Instant Hover Engine (Multi-Line & Windows 11 UIItemsView)
+* **Multi-Line Filename Wrapping Fix**: In Windows Explorer icon/grid views, longer filenames wrap across multiple lines using `\r\n`. Previous validation rejected multiline strings, requiring a mouse click to force selection. RawView now normalizes all whitespace and line breaks (`\r\n\t`), resolving full paths instantly on pure cursor hover.
+* **Windows 11 `UIItemsView` & `ValuePattern` Extraction**: Modern Windows 11 Explorer item controls expose their filename through `ValuePattern.Value` on child `System.ItemNameDisplay` controls rather than standard `.Name`. RawView now queries `ValuePattern` directly for zero-click identification.
+* **Active Tab Resolution**: In multi-tab Windows 11 Explorer windows, the hovered folder is accurately paired with the active tab's title extracted from `win32gui.GetWindowText`, preventing path lookup failures in background tabs.
+* **Progressive Hover Retries**: Dwelling hover now progressively re-attempts path resolution over up to 5 ticks (every 60ms) while the mouse rests on the file, completely eliminating the single-attempt lockout.
+* **Stem Collision Resolution**: When matching base filenames in folders containing multiple files with the same stem, RawView prioritizes graphics and vector formats (`.psd`, `.ai`, `.eps`, `.pdf`) and gracefully falls back to COM automation.
+
+### 🔄 3. Right-Click Context Menu "Refresh Thumbnail"
+* **Single File Context Menu**: Right-clicking any supported file format displays **"Refresh Thumbnail"**, which immediately invalidates that file's cache and requests Windows Shell to redraw its thumbnail.
+* **Active Folder Background Refresh**: Right-clicking on empty background space in any Explorer folder without selecting a file displays **"Refresh All Thumbnails in Folder"**, refreshing thumbnails for all supported items inside that folder.
+* **Folder Context Menu**: Right-clicking any folder item also provides **"Refresh All Thumbnails in Folder"**.
+* **Floating Status Toast HUD**: Triggering a thumbnail refresh from the context menu pops up a sleek, high-visibility floating toast HUD confirming the refresh status.
+* **CLI Integration**: Implemented `--refresh-thumb <file>` and `--refresh-folder <dir>` CLI commands in `RawView.exe` with single-instance bypass for instant IPC execution.
+
+### 🔐 4. Authenticode Code Signing Pipeline
+* **Official Digital Signatures**: All release binaries (`RawView.exe`, `RawViewThumbnailProvider.dll`, and `RawView_v4.1.2_Setup.exe`) are digitally signed with Authenticode certificates.
+* **Root Certificate Packaging**: The installer (`installer/RawView.iss`) automatically packages the public certificate and provisions it into Windows `Root` and `TrustedPublisher` certificate stores during elevated setup via `certutil.exe`.
+* **Automated Signing Pipeline**: `build_release.py` automatically detects or generates signing certificates and executes dual-pass signing with timestamping.
+
+---
+
 # 🚀 RawView v4.1.0 Release Notes
 
 **RawView v4.1.0** introduces a milestone architecture upgrade: **Permanent Windows Explorer Folder Grid Thumbnails and Native App Type Overlay Badges** (`IThumbnailProvider` COM Shell Extension). In addition to instant hover popups, RawView now generates high-definition artwork thumbnails directly inside Windows Explorer folders for Adobe Creative files (PSD, PSB, AI, EPS), Microsoft Office documents (Word, Excel, PowerPoint), PDFs, Vector SVGs, and Camera RAW files—along with crisp application icon overlay badges (`Ps`, `Ai`, `W`, `P`, `PDF`) stamped on the bottom-right corner!

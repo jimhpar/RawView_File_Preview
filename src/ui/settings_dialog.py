@@ -13,8 +13,30 @@ from src.core.config import (
 from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import get_license_status, activate_license, get_machine_id
 
+def get_show_type_overlay() -> bool:
+    """Checks whether Windows Explorer ShowTypeOverlay (app icon badge on thumbnails) is enabled."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", 0, winreg.KEY_READ) as key:
+            val, _ = winreg.QueryValueEx(key, "ShowTypeOverlay")
+            return bool(val)
+    except Exception:
+        return True
+
+def set_show_type_overlay(enabled: bool):
+    """Enables or disables Windows Explorer ShowTypeOverlay (app icon badge on thumbnails) and notifies the shell."""
+    try:
+        import winreg
+        import ctypes
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "ShowTypeOverlay", 0, winreg.REG_DWORD, 1 if enabled else 0)
+        if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+    except Exception:
+        pass
+
 class SettingsDialog(QDialog):
-    """Modern dark-themed tabbed preferences dialog for RawView v3.9.1."""
+    """Modern dark-themed tabbed preferences dialog for RawView v4.1.2."""
     config_changed = pyqtSignal(dict)
 
     def __init__(self, config: dict, parent=None):
@@ -369,9 +391,10 @@ class SettingsDialog(QDialog):
         status_lbl.setStyleSheet("color: #34D399; font-weight: 600; font-size: 11px;")
         explorer_layout.addWidget(status_lbl)
 
-        badge_lbl = QLabel("• App Overlay Badges: Enabled (Shows Ps, Ai, W, P, PDF badges on icons)", self)
-        badge_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
-        explorer_layout.addWidget(badge_lbl)
+        self.show_app_badges_cb = QCheckBox("Display App Icon Badges on Thumbnails (Ps, Ai, PDF)", self)
+        self.show_app_badges_cb.setChecked(get_show_type_overlay())
+        self.show_app_badges_cb.setToolTip("Shows application icon badges (e.g. Photoshop 'Ps', Illustrator 'Ai') on top of file thumbnails.")
+        explorer_layout.addWidget(self.show_app_badges_cb)
 
         refresh_cache_btn = QPushButton("🔄 Rebuild && Refresh Windows Thumbnail Cache", self)
         refresh_cache_btn.setStyleSheet("""
@@ -899,6 +922,9 @@ class SettingsDialog(QDialog):
         # Software Updates
         self.config["auto_check_updates"] = self.auto_update_cb.isChecked()
 
+        # App Badges (ShowTypeOverlay in Windows Explorer)
+        set_show_type_overlay(self.show_app_badges_cb.isChecked())
+
         save_config(self.config)
         self.config_changed.emit(self.config)
         self.accept()
@@ -945,6 +971,7 @@ class SettingsDialog(QDialog):
             import shutil
             import ctypes
             from src.core.config import CACHE_DIR
+            set_show_type_overlay(self.show_app_badges_cb.isChecked())
             thumbs_dir = CACHE_DIR / "thumbs"
             if thumbs_dir.exists():
                 shutil.rmtree(thumbs_dir, ignore_errors=True)

@@ -389,10 +389,11 @@ class RawViewApp(QObject):
         QApplication.quit()
 
 _lock_file_handle = None
+_mutex_handle = None
 
 def check_single_instance() -> bool:
     """Enforces a single running instance via Win32 named mutex or cross-platform lockfile."""
-    global _lock_file_handle
+    global _lock_file_handle, _mutex_handle
     if IS_WINDOWS and kernel32:
         mutex = kernel32.CreateMutexW(None, True, APP_MUTEX_NAME)
         last_error = kernel32.GetLastError()
@@ -401,6 +402,7 @@ def check_single_instance() -> bool:
             if mutex:
                 kernel32.CloseHandle(mutex)
             return False
+        _mutex_handle = mutex
         return True
     else:
         # Cross-platform lockfile (macOS / Unix)
@@ -420,6 +422,8 @@ def main():
     parser.add_argument("--minimized", action="store_true", help="Start minimized to System Tray")
     parser.add_argument("--settings", action="store_true", help="Open settings dialog immediately")
     parser.add_argument("--headless-thumb", nargs=3, metavar=("FILE", "SIZE", "OUT_BMP"), help="Generate a thumbnail headless and exit")
+    parser.add_argument("--refresh-thumb", metavar="FILE", help="Refresh thumbnail for a specific file")
+    parser.add_argument("--refresh-folder", metavar="DIR", help="Refresh thumbnails for all items in a folder")
     args = parser.parse_args()
 
     # Fast Headless Worker for Explorer Thumbnails (bypasses single-instance check)
@@ -431,6 +435,36 @@ def main():
             sz = 256
         ok = generate_headless_thumbnail(file_path, sz, out_bmp)
         sys.exit(0 if ok else 1)
+
+    # Fast Refresh Action: Single File (bypasses single-instance check)
+    if args.refresh_thumb:
+        target = os.path.abspath(args.refresh_thumb)
+        from src.core.thumbnail_server import refresh_file_thumbnail
+        ok = refresh_file_thumbnail(target)
+        try:
+            temp_app = QApplication.instance() or QApplication(sys.argv[:1])
+            fname = Path(target).name
+            StatusToastHUD.show_message(f"Refreshed: {fname}", is_success=True, badge="RawView")
+            QTimer.singleShot(1400, temp_app.quit)
+            temp_app.exec()
+        except Exception:
+            pass
+        sys.exit(0 if ok else 1)
+
+    # Fast Refresh Action: Entire Folder (bypasses single-instance check)
+    if args.refresh_folder:
+        target_dir = os.path.abspath(args.refresh_folder)
+        from src.core.thumbnail_server import refresh_folder_thumbnails
+        count = refresh_folder_thumbnails(target_dir)
+        try:
+            temp_app = QApplication.instance() or QApplication(sys.argv[:1])
+            msg = f"Refreshed {count} thumbnails" if count > 0 else "Folder thumbnails refreshed"
+            StatusToastHUD.show_message(msg, is_success=True, badge="RawView")
+            QTimer.singleShot(1400, temp_app.quit)
+            temp_app.exec()
+        except Exception:
+            pass
+        sys.exit(0)
 
     # Enforce Single Instance
     if not check_single_instance():
@@ -446,6 +480,7 @@ def main():
             except Exception:
                 pass
         print(f"{APP_NAME} is already running in background.")
+        sys.exit(0)
     # Enable Per-Monitor DPI Awareness V2 on Windows for multi-monitor accuracy
     if IS_WINDOWS and user32:
         try:

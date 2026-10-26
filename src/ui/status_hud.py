@@ -23,9 +23,25 @@ class StatusToastHUD(QWidget):
         cls._instance = toast
         toast.show_animated()
 
-    def __init__(self, enabled: bool, parent=None):
+    @classmethod
+    def show_message(cls, text: str, is_success: bool = True, badge: str = "RawView"):
+        """Static helper to show a custom notification toast (e.g. for thumbnail refresh)."""
+        if cls._instance is not None:
+            try:
+                cls._instance.close()
+            except Exception:
+                pass
+            cls._instance = None
+
+        toast = cls(enabled=is_success, custom_text=text, custom_badge=badge)
+        cls._instance = toast
+        toast.show_animated()
+
+    def __init__(self, enabled: bool, custom_text: str = "", custom_badge: str = "", parent=None):
         super().__init__(parent)
         self.enabled = enabled
+        self.custom_text = custom_text
+        self.custom_badge = custom_badge
 
         # Frameless, transparent, always-on-top, non-activating tooltip
         self.setWindowFlags(
@@ -57,7 +73,10 @@ class StatusToastHUD(QWidget):
 
         # Status Text
         self.label = QLabel(self)
-        status_text = "RawView Hover Preview: Active" if self.enabled else "RawView Hover Preview: Paused"
+        if self.custom_text:
+            status_text = self.custom_text
+        else:
+            status_text = "RawView Hover Preview: Active" if self.enabled else "RawView Hover Preview: Paused"
         text_color = "#F8FAFC" if self.enabled else "#CBD5E1"
         self.label.setText(status_text)
         font = QFont("Segoe UI", 10, QFont.Weight.DemiBold)
@@ -65,8 +84,9 @@ class StatusToastHUD(QWidget):
         self.label.setStyleSheet(f"color: {text_color}; background: transparent;")
         layout.addWidget(self.label)
 
-        # Hotkey Badge
-        self.badge = QLabel("Ctrl + `", self)
+        # Hotkey / Info Badge
+        badge_val = self.custom_badge if self.custom_badge else "Ctrl + `"
+        self.badge = QLabel(badge_val, self)
         self.badge.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
         self.badge.setStyleSheet("""
             color: #94A3B8;

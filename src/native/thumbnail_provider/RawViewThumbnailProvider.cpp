@@ -121,7 +121,23 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     );
 
     if (hPipe == INVALID_HANDLE_VALUE) {
-        return false;
+        // If pipe is busy with another Explorer thread, wait briefly up to 250ms
+        if (GetLastError() == ERROR_PIPE_BUSY) {
+            if (WaitNamedPipeW(L"\\\\.\\pipe\\RawViewThumbnailPipe", 250)) {
+                hPipe = CreateFileW(
+                    L"\\\\.\\pipe\\RawViewThumbnailPipe",
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    NULL,
+                    OPEN_EXISTING,
+                    0,
+                    NULL
+                );
+            }
+        }
+        if (hPipe == INVALID_HANDLE_VALUE) {
+            return false;
+        }
     }
 
     // Set pipe to message mode
@@ -199,24 +215,38 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     return true;
 }
 
-bool CRawViewThumbnailProvider::FetchFromHeadlessWorker(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha) {
+static void EnsureBackgroundDaemonRunning() {
+    // Throttle attempts to launch the background service: at most once every 15 seconds
+    static ULONGLONG s_lastLaunchTick = 0;
+    ULONGLONG now = GetTickCount64();
+    if (now - s_lastLaunchTick < 15000) {
+        return;
+    }
+
+    // Check if RawView single instance mutex is already active
+    HANDLE hMutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex");
+    if (hMutex) {
+        CloseHandle(hMutex);
+        return;
+    }
+
+    s_lastLaunchTick = now;
+
     // Locate RawView.exe in same directory as this DLL or standard install dir
     wchar_t dllPath[MAX_PATH];
-    if (!GetModuleFileNameW(g_hInst, dllPath, MAX_PATH)) return false;
+    if (!GetModuleFileNameW(g_hInst, dllPath, MAX_PATH)) return;
     PathRemoveFileSpecW(dllPath);
 
     std::wstring exePath = std::wstring(dllPath) + L"\\RawView.exe";
     if (GetFileAttributesW(exePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
         exePath = L"C:\\Program Files\\RawView\\RawView.exe";
         if (GetFileAttributesW(exePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-            return false;
+            return;
         }
     }
 
-    std::wstring cachePath = GetCacheFilePath(cx);
-
     std::wstringstream cmd;
-    cmd << L"\"" << exePath << L"\" --headless-thumb \"" << m_filePath << L"\" " << cx << L" \"" << cachePath << L"\"";
+    cmd << L"\"" << exePath << L"\" --minimized";
 
     STARTUPINFOW si = { sizeof(si) };
     si.dwFlags = STARTF_USESHOWWINDOW;
@@ -226,15 +256,11 @@ bool CRawViewThumbnailProvider::FetchFromHeadlessWorker(UINT cx, HBITMAP *phbmp,
     std::vector<wchar_t> cmdBuf(cmd.str().begin(), cmd.str().end());
     cmdBuf.push_back(0);
 
-    if (CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        WaitForSingleObject(pi.hProcess, 1500); // Wait max 1.5 seconds
+    // Launch daemon in background, detached, DO NOT block Explorer
+    if (CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-
-        return FetchFromDiskCache(cx, phbmp, pdwAlpha);
     }
-
-    return false;
 }
 
 IFACEMETHODIMP CRawViewThumbnailProvider::GetThumbnail(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha) {
@@ -254,10 +280,9 @@ IFACEMETHODIMP CRawViewThumbnailProvider::GetThumbnail(UINT cx, HBITMAP *phbmp, 
         return S_OK;
     }
 
-    // Tier 3: If background service is closed or restarting, launch headless worker
-    if (FetchFromHeadlessWorker(cx, phbmp, pdwAlpha)) {
-        return S_OK;
-    }
+    // If background service is closed, gently trigger a single background startup without blocking Explorer.
+    // Return E_FAIL immediately so Windows Explorer stays 100% fluid and responsive.
+    EnsureBackgroundDaemonRunning();
 
     return E_FAIL;
 }

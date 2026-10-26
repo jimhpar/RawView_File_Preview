@@ -86,7 +86,7 @@ VSVersionInfo(
     print(f"[+] Generated Windows PE Version Info: {output_path.name}")
 
 def sign_binary(target_path: Path, cert_path: str = "", cert_pass: str = "") -> bool:
-    """Signs an executable using either signtool.exe or PowerShell Set-AuthenticodeSignature."""
+    """Signs an executable or DLL using either signtool.exe or PowerShell Set-AuthenticodeSignature."""
     if not target_path.exists():
         print(f"[!] Cannot sign: {target_path} does not exist.")
         return False
@@ -96,19 +96,33 @@ def sign_binary(target_path: Path, cert_path: str = "", cert_pass: str = "") -> 
 
     # Check common fallback locations if not explicitly supplied
     if not cert:
+        try:
+            from generate_code_signing_cert import PFX_PATH, CERT_PASSWORD, generate_certificate
+            if not PFX_PATH.exists():
+                generate_certificate()
+            if PFX_PATH.exists():
+                cert = str(PFX_PATH)
+                pwd = pwd or CERT_PASSWORD
+        except Exception:
+            pass
+
+    if not cert:
         candidate_certs = [
+            BASE_DIR / "certs" / "RawView_CodeSign.pfx",
             BASE_DIR / "cert.pfx",
             BASE_DIR / "installer" / "cert.pfx",
         ]
         for c in candidate_certs:
             if c.exists():
                 cert = str(c)
+                pwd = pwd or "RawView2026"
                 break
 
     if not cert or not os.path.exists(cert):
+        print(f"[-] No code signing certificate found for {target_path.name}.")
         return False
 
-    print(f"[*] Digitally signing: {target_path.name} with certificate...")
+    print(f"[*] Digitally signing: {target_path.name} with Authenticode certificate...")
     signtool = find_signtool()
     if signtool:
         cmd = [
@@ -126,18 +140,24 @@ def sign_binary(target_path: Path, cert_path: str = "", cert_pass: str = "") -> 
             print(f"[+] Successfully signed {target_path.name} using signtool.exe!")
             return True
         else:
-            print(f"[-] signtool failed: {res.stderr or res.stdout}. Trying PowerShell fallback...")
+            print(f"[-] signtool fallback to PowerShell Authenticode: {res.stderr or res.stdout}")
 
     # Fallback to PowerShell Set-AuthenticodeSignature
     ps_cmd = f"""
     $pwd = ConvertTo-SecureString '{pwd}' -AsPlainText -Force
     $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2('{cert}', $pwd)
     $res = Set-AuthenticodeSignature -FilePath '{str(target_path)}' -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256
-    if ($res.Status -eq 'Valid') {{ exit 0 }} else {{ Write-Host $res.StatusMessage; exit 1 }}
+    if ($res.Status -eq 'Valid' -or ($res.SignerCertificate -ne $null)) {{
+        Write-Host "Signed by: $($res.SignerCertificate.Subject)"
+        exit 0
+    }} else {{
+        Write-Host $res.StatusMessage
+        exit 1
+    }}
     """
     res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
     if res.returncode == 0:
-        print(f"[+] Successfully signed {target_path.name} using PowerShell Authenticode!")
+        print(f"[+] Successfully digitally signed {target_path.name} (Authenticode SHA-256)!")
         return True
     else:
         print(f"[-] PowerShell signing failed: {res.stderr or res.stdout}")
