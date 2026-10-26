@@ -47,6 +47,12 @@ class SettingsDialog(QDialog):
         self.config = config.copy()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION} - Settings & Controls")
         self.setFixedSize(620, 780)
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowCloseButtonHint |
+            Qt.WindowType.WindowMinimizeButtonHint
+        )
         self._init_style()
         self._init_ui()
 

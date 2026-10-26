@@ -5,13 +5,14 @@ import threading
 import time
 from pathlib import Path
 from PyQt6.QtGui import QImage
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QObject, pyqtSignal
 
 from src.core.config import CACHE_DIR
 
 IS_WINDOWS = sys.platform == "win32"
 
 RVTP_MAGIC = 0x52565450  # 'RVTP'
+RVTP_MAGIC_SETTINGS = 0x52565453  # 'RVTS' (Trigger Settings Window)
 RVTP_STATUS_OK = 1
 RVTP_STATUS_FAIL = 0
 RVTP_FORMAT_BGRA32 = 1
@@ -90,9 +91,12 @@ def generate_headless_thumbnail(file_path: str, cx: int, out_bmp_path: str) -> b
         return save_thumbnail_bmp(thumb, Path(out_bmp_path))
     return False
 
-class ThumbnailPipeServer:
-    """High-speed Windows Named Pipe Server servicing Windows Explorer thumbnail requests."""
-    def __init__(self):
+class ThumbnailPipeServer(QObject):
+    """High-speed Windows Named Pipe Server servicing Windows Explorer thumbnail requests and IPC control."""
+    settings_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.running = False
         self.thread = None
 
@@ -202,6 +206,12 @@ class ThumbnailPipeServer:
                 return
 
             magic, cx, path_char_count = struct.unpack("<III", data)
+            if magic == RVTP_MAGIC_SETTINGS:
+                # IPC command: User launched RawView or clicked Settings shortcut while running
+                self.settings_requested.emit()
+                win32file.CloseHandle(h_pipe)
+                return
+
             if magic != RVTP_MAGIC or path_char_count == 0 or path_char_count > 4096:
                 win32file.CloseHandle(h_pipe)
                 return
@@ -358,3 +368,25 @@ def refresh_folder_thumbnails(folder_path: str) -> int:
             pass
 
     return refreshed_count
+ 
+def notify_running_instance_to_show_settings() -> bool:
+    """Sends IPC command over Named Pipe to bring up Settings in the running instance."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import win32file
+        h = win32file.CreateFile(
+            PIPE_NAME,
+            win32file.GENERIC_READ | win32file.GENERIC_WRITE,
+            0,
+            None,
+            win32file.OPEN_EXISTING,
+            0,
+            None
+        )
+        req = struct.pack("<III", RVTP_MAGIC_SETTINGS, 0, 0)
+        win32file.WriteFile(h, req)
+        win32file.CloseHandle(h)
+        return True
+    except Exception:
+        return False

@@ -55,9 +55,9 @@ class TrayManager(QObject):
         """)
 
         # 1. Header item
-        header_action = QAction(f"{APP_NAME} {APP_VERSION}", self.menu)
-        header_action.setEnabled(False)
-        self.menu.addAction(header_action)
+        self.header_action = QAction(f"{APP_NAME} {APP_VERSION}", self.menu)
+        self.header_action.setEnabled(False)
+        self.menu.addAction(self.header_action)
         self.menu.addSeparator()
 
         # 2. Toggle Enabled
@@ -83,27 +83,27 @@ class TrayManager(QObject):
 
         self.menu.addSeparator()
 
-        # 4. Settings Dialog
-        settings_action = QAction("Settings & Formats...", self.menu)
-        settings_action.triggered.connect(self.show_settings)
-        self.menu.addAction(settings_action)
+        # 4. Settings Dialog (use && so & is not consumed as mnemonic)
+        self.settings_action = QAction("⚙️ Settings && Formats...", self.menu)
+        self.settings_action.triggered.connect(self.show_settings)
+        self.menu.addAction(self.settings_action)
 
         # 5. Check for Updates
-        check_update_action = QAction("Check for Updates...", self.menu)
-        check_update_action.triggered.connect(self.check_updates_requested.emit)
-        self.menu.addAction(check_update_action)
+        self.check_update_action = QAction("🔄 Check for Updates...", self.menu)
+        self.check_update_action.triggered.connect(self.check_updates_requested.emit)
+        self.menu.addAction(self.check_update_action)
 
         # 6. About
-        about_action = QAction(f"About {APP_NAME}", self.menu)
-        about_action.triggered.connect(self._show_about)
-        self.menu.addAction(about_action)
+        self.about_action = QAction(f"ℹ️ About {APP_NAME}", self.menu)
+        self.about_action.triggered.connect(self._show_about)
+        self.menu.addAction(self.about_action)
 
         self.menu.addSeparator()
 
-        # 6. Exit
-        exit_action = QAction("Exit RawView", self.menu)
-        exit_action.triggered.connect(self.quit_requested.emit)
-        self.menu.addAction(exit_action)
+        # 7. Exit
+        self.exit_action = QAction("❌ Exit RawView", self.menu)
+        self.exit_action.triggered.connect(self.quit_requested.emit)
+        self.menu.addAction(self.exit_action)
 
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self._on_tray_activated)
@@ -112,7 +112,8 @@ class TrayManager(QObject):
         self.tray.show()
 
     def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+        # Open Settings on either Left Click or Double Click
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self.show_settings()
 
     def _on_toggle_enabled(self, checked: bool):
@@ -128,10 +129,28 @@ class TrayManager(QObject):
         self.config_updated.emit(self.config)
 
     def show_settings(self):
-        if not self.settings_dialog or not self.settings_dialog.isVisible():
-            self.settings_dialog = SettingsDialog(self.config)
-            self.settings_dialog.config_changed.connect(self._on_settings_saved)
-            self.settings_dialog.exec()
+        try:
+            if not self.settings_dialog:
+                self.settings_dialog = SettingsDialog(self.config)
+                self.settings_dialog.config_changed.connect(self._on_settings_saved)
+
+            self.settings_dialog.show()
+            self.settings_dialog.showNormal()
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+
+            import sys
+            if sys.platform == "win32":
+                import ctypes
+                try:
+                    hwnd = int(self.settings_dialog.winId())
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[TrayManager] Error opening SettingsDialog: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_settings_saved(self, new_config: dict):
         self.config = new_config

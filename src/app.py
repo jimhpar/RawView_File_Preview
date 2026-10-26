@@ -229,6 +229,7 @@ class RawViewApp(QObject):
 
         # 5. Always-Active Windows Explorer Thumbnail IPC Server (Serves thumbnails even when hover is toggled off)
         self.thumbnail_server = ThumbnailPipeServer()
+        self.thumbnail_server.settings_requested.connect(self.tray_manager.show_settings)
         self.thumbnail_server.start()
 
         # 6. Deferred Weekly Background Update Check (10s after startup)
@@ -493,7 +494,14 @@ def main():
 
     # Enforce Single Instance
     if not check_single_instance():
-        if IS_MACOS:
+        if IS_WINDOWS:
+            # If user launched RawView again or clicked settings, notify the background instance to bring up Settings!
+            try:
+                from src.core.thumbnail_server import notify_running_instance_to_show_settings
+                notify_running_instance_to_show_settings()
+            except Exception:
+                pass
+        elif IS_MACOS:
             try:
                 temp_app = QApplication(sys.argv)
                 from PyQt6.QtWidgets import QMessageBox
