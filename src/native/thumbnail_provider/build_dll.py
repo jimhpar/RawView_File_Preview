@@ -46,7 +46,8 @@ def compile_dll(output_dir: Path = None) -> bool:
         "-lole32",
         "-lshell32",
         "-lgdi32",
-        "-luser32"
+        "-luser32",
+        "-luuid"
     ]
 
     print(f"[*] Compiling RawViewThumbnailProvider.dll with Zig ({zig_exe})...")

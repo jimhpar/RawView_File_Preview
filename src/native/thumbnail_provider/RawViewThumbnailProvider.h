@@ -34,6 +34,7 @@ struct ThumbnailResponseHeader {
 #pragma pack(pop)
 
 class CRawViewThumbnailProvider : public IInitializeWithFile,
+                                   public IInitializeWithItem,
                                    public IThumbnailProvider
 {
 public:
@@ -47,6 +48,9 @@ public:
 
     // IInitializeWithFile
     IFACEMETHODIMP Initialize(LPCWSTR pszFilePath, DWORD grfMode);
+
+    // IInitializeWithItem
+    IFACEMETHODIMP Initialize(IShellItem *psi, DWORD grfMode);
 
     // IThumbnailProvider
     IFACEMETHODIMP GetThumbnail(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha);

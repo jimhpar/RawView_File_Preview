@@ -20,6 +20,12 @@ static uint64_t Fnv1aHash(const std::wstring& str) {
     return hash;
 }
 
+// Explicit GUID definitions to guarantee zero external symbol resolution issues in MinGW/Clang
+static const IID s_IID_IUnknown = { 0x00000000, 0x0000, 0x0000, { 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
+static const IID s_IID_IInitializeWithFile = { 0xb7d14566, 0x0509, 0x4cce, { 0xa7, 0x1f, 0x0a, 0x55, 0x42, 0x33, 0xbd, 0x9b } };
+static const IID s_IID_IInitializeWithItem = { 0x7f73be3f, 0xfb79, 0x493c, { 0xa6, 0xc7, 0x7e, 0xe1, 0x4e, 0x24, 0x58, 0x41 } };
+static const IID s_IID_IThumbnailProvider = { 0xe357fccd, 0xa995, 0x4576, { 0xb0, 0x1f, 0x23, 0x46, 0x30, 0x15, 0x4e, 0x96 } };
+
 CRawViewThumbnailProvider::CRawViewThumbnailProvider() : m_cRef(1) {
     InterlockedIncrement(&g_cDllRef);
 }
@@ -29,12 +35,27 @@ CRawViewThumbnailProvider::~CRawViewThumbnailProvider() {
 }
 
 IFACEMETHODIMP CRawViewThumbnailProvider::QueryInterface(REFIID riid, void **ppv) {
-    static const QITAB qit[] = {
-        QITABENT(CRawViewThumbnailProvider, IInitializeWithFile),
-        QITABENT(CRawViewThumbnailProvider, IThumbnailProvider),
-        { 0 },
-    };
-    return QISearch(this, qit, riid, ppv);
+    if (!ppv) return E_POINTER;
+    *ppv = NULL;
+
+    if (IsEqualIID(riid, s_IID_IUnknown)) {
+        *ppv = static_cast<IThumbnailProvider*>(this);
+    }
+    else if (IsEqualIID(riid, s_IID_IInitializeWithFile)) {
+        *ppv = static_cast<IInitializeWithFile*>(this);
+    }
+    else if (IsEqualIID(riid, s_IID_IInitializeWithItem)) {
+        *ppv = static_cast<IInitializeWithItem*>(this);
+    }
+    else if (IsEqualIID(riid, s_IID_IThumbnailProvider)) {
+        *ppv = static_cast<IThumbnailProvider*>(this);
+    }
+    else {
+        return E_NOINTERFACE;
+    }
+
+    reinterpret_cast<IUnknown*>(*ppv)->AddRef();
+    return S_OK;
 }
 
 IFACEMETHODIMP_(ULONG) CRawViewThumbnailProvider::AddRef() {
@@ -53,6 +74,18 @@ IFACEMETHODIMP CRawViewThumbnailProvider::Initialize(LPCWSTR pszFilePath, DWORD 
     if (!pszFilePath) return E_INVALIDARG;
     m_filePath = pszFilePath;
     return S_OK;
+}
+
+IFACEMETHODIMP CRawViewThumbnailProvider::Initialize(IShellItem *psi, DWORD grfMode) {
+    if (!psi) return E_POINTER;
+    LPWSTR pszName = NULL;
+    HRESULT hr = psi->GetDisplayName(SIGDN_FILESYSPATH, &pszName);
+    if (SUCCEEDED(hr) && pszName) {
+        m_filePath = pszName;
+        CoTaskMemFree(pszName);
+        return S_OK;
+    }
+    return hr;
 }
 
 std::wstring CRawViewThumbnailProvider::GetCacheFilePath(UINT cx) {
