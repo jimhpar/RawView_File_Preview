@@ -1,5 +1,8 @@
 import os
+import sys
 from pathlib import Path
+
+IS_WINDOWS = sys.platform == "win32"
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QCheckBox,
     QPushButton, QGroupBox, QGridLayout, QMessageBox, QScrollArea, QWidget,
@@ -605,7 +608,7 @@ class SettingsDialog(QDialog):
         cache_layout.addWidget(self.cache_info_label)
         cache_layout.addStretch()
 
-        clear_btn = QPushButton("🧹 Clear Cache & Repair Icons")
+        clear_btn = QPushButton("🧹 Clear Cache && Repair Icons")
         clear_btn.clicked.connect(self._clear_cache)
         cache_layout.addWidget(clear_btn)
         main_layout.addWidget(cache_group)
@@ -875,6 +878,7 @@ class SettingsDialog(QDialog):
     def _clear_cache(self):
         try:
             import shutil
+            # 1. Wipe Roaming cache (%APPDATA%\RawView\cache)
             if CACHE_DIR.exists():
                 for item in CACHE_DIR.iterdir():
                     try:
@@ -885,6 +889,25 @@ class SettingsDialog(QDialog):
                     except Exception:
                         pass
 
+            # 2. Wipe LocalAppData thumbnails cache (%LOCALAPPDATA%\RawView\cache)
+            if IS_WINDOWS:
+                try:
+                    local_appdata = os.environ.get("LOCALAPPDATA")
+                    if local_appdata:
+                        rv_local = Path(local_appdata) / "RawView" / "cache"
+                        if rv_local.exists():
+                            for item in rv_local.iterdir():
+                                try:
+                                    if item.is_file():
+                                        item.unlink(missing_ok=True)
+                                    elif item.is_dir():
+                                        shutil.rmtree(item, ignore_errors=True)
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
+
+            # 3. Run full Windows Shell Icon & Association repair
             if IS_WINDOWS:
                 try:
                     from src.core.shell_icon_repair import run_full_shell_repair
@@ -893,11 +916,25 @@ class SettingsDialog(QDialog):
                     pass
 
             self.cache_info_label.setText("Thumbnail Cache: 0.0 MB")
-            QMessageBox.information(
-                self,
-                "Cache Cleared & Icons Repaired",
-                "Thumbnail cache has been wiped and Windows Explorer shell icon associations have been refreshed."
-            )
+
+            if IS_WINDOWS:
+                reply = QMessageBox.question(
+                    self,
+                    "Cache Cleared & Icons Repaired",
+                    "Thumbnail cache has been wiped and shell icon associations repaired!\n\n"
+                    "Would you like to restart Windows Explorer now to immediately apply the repaired icons across all open folders?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    from src.core.shell_icon_repair import restart_explorer_and_purge_thumbcache
+                    restart_explorer_and_purge_thumbcache()
+            else:
+                QMessageBox.information(
+                    self,
+                    "Cache Cleared",
+                    "Thumbnail cache has been successfully wiped."
+                )
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to clear cache: {e}")
 

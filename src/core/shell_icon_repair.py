@@ -20,33 +20,107 @@ def get_assets_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "assets"
 
 def find_installed_photoshop() -> str:
-    """Discovers installed Photoshop.exe across all system drives."""
-    drives = ["C", "D", "E"]
+    """Discovers installed Photoshop.exe across registry and system drives."""
+    if not IS_WINDOWS:
+        return ""
+
+    import re
+
+    # 1. Search Windows Registry
+    for root in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+        for app_name in ["Photoshop.exe"]:
+            try:
+                with winreg.OpenKey(root, f"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{app_name}") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    p = val.strip('"').strip()
+                    if os.path.isfile(p):
+                        return p
+            except Exception:
+                pass
+            try:
+                with winreg.OpenKey(root, f"Software\\Classes\\Applications\\{app_name}\\shell\\open\\command") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    m = re.search(r'"([^"]+\.exe)"', val) or re.search(r'([a-zA-Z]:\\[^,\s"]+\.exe)', val)
+                    if m and os.path.isfile(m.group(1)):
+                        return m.group(1)
+            except Exception:
+                pass
+
+        for v in range(35, 15, -1):
+            try:
+                with winreg.OpenKey(root, f"Software\\Classes\\Photoshop.Image.{v}\\shell\\open\\command") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    m = re.search(r'"([^"]+\.exe)"', val) or re.search(r'([a-zA-Z]:\\[^,\s"]+\.exe)', val)
+                    if m and os.path.isfile(m.group(1)):
+                        return m.group(1)
+            except Exception:
+                pass
+
+    # 2. Search common drive paths
+    drives = ["C", "D", "E", "F", "G"]
     for drive in drives:
-        base = f"{drive}:\\Program Files\\Adobe"
-        if os.path.isdir(base):
-            for pattern in [f"{base}\\Adobe Photoshop *\\Photoshop.exe", f"{base}\\*Photoshop*\\Photoshop.exe"]:
-                matches = glob.glob(pattern)
-                if matches:
-                    matches.sort(reverse=True)
-                    return matches[0]
+        for pf in ["Program Files", "Program Files (x86)"]:
+            base = f"{drive}:\\{pf}\\Adobe"
+            if os.path.isdir(base):
+                for pattern in [f"{base}\\Adobe Photoshop *\\Photoshop.exe", f"{base}\\*Photoshop*\\Photoshop.exe"]:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        matches.sort(reverse=True)
+                        return matches[0]
     return ""
 
 def find_installed_illustrator() -> str:
-    """Discovers installed Illustrator.exe across all system drives."""
-    drives = ["C", "D", "E"]
+    """Discovers installed Illustrator.exe across registry and system drives."""
+    if not IS_WINDOWS:
+        return ""
+
+    import re
+
+    # 1. Search Windows Registry
+    for root in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+        for app_name in ["Illustrator.exe"]:
+            try:
+                with winreg.OpenKey(root, f"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{app_name}") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    p = val.strip('"').strip()
+                    if os.path.isfile(p):
+                        return p
+            except Exception:
+                pass
+            try:
+                with winreg.OpenKey(root, f"Software\\Classes\\Applications\\{app_name}\\shell\\open\\command") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    m = re.search(r'"([^"]+\.exe)"', val) or re.search(r'([a-zA-Z]:\\[^,\s"]+\.exe)', val)
+                    if m and os.path.isfile(m.group(1)):
+                        return m.group(1)
+            except Exception:
+                pass
+
+        for v in range(35, 15, -1):
+            try:
+                with winreg.OpenKey(root, f"Software\\Classes\\Adobe.Illustrator.{v}\\shell\\open\\command") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    m = re.search(r'"([^"]+\.exe)"', val) or re.search(r'([a-zA-Z]:\\[^,\s"]+\.exe)', val)
+                    if m and os.path.isfile(m.group(1)):
+                        return m.group(1)
+            except Exception:
+                pass
+
+    # 2. Search common drive paths
+    drives = ["C", "D", "E", "F", "G"]
     for drive in drives:
-        base = f"{drive}:\\Program Files\\Adobe"
-        if os.path.isdir(base):
-            for pattern in [
-                f"{base}\\Adobe Illustrator *\\Support Files\\Contents\\Windows\\Illustrator.exe",
-                f"{base}\\*Illustrator*\\Support Files\\Contents\\Windows\\Illustrator.exe",
-                f"{base}\\Adobe Illustrator *\\Illustrator.exe"
-            ]:
-                matches = glob.glob(pattern)
-                if matches:
-                    matches.sort(reverse=True)
-                    return matches[0]
+        for pf in ["Program Files", "Program Files (x86)"]:
+            base = f"{drive}:\\{pf}\\Adobe"
+            if os.path.isdir(base):
+                for pattern in [
+                    f"{base}\\Adobe Illustrator *\\Support Files\\Contents\\Windows\\Illustrator.exe",
+                    f"{base}\\*Illustrator*\\Support Files\\Contents\\Windows\\Illustrator.exe",
+                    f"{base}\\Adobe Illustrator *\\Illustrator.exe"
+                ]:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        matches.sort(reverse=True)
+                        return matches[0]
     return ""
 
 def clean_user_shadow_keys():
@@ -155,11 +229,11 @@ def repair_adobe_associations():
     ps_exe = find_installed_photoshop()
     ai_exe = find_installed_illustrator()
 
-    ps_icon_path = f'"{ps_exe}",1' if ps_exe else f'"{ps_ico}",0'
-    ai_icon_path = f'"{ai_exe}",1' if ai_exe else f'"{ai_ico}",0'
+    ps_icon_path = f"{ps_exe},1" if ps_exe else ps_ico
+    ai_icon_path = f"{ai_exe},1" if ai_exe else ai_ico
 
     # 1. Repair Photoshop ProgIDs & .psd / .psb
-    ps_progids = [f"Photoshop.Image.{v}" for v in range(15, 35)] + ["Photoshop.Image"]
+    ps_progids = [f"Photoshop.Image.{v}" for v in range(15, 35)] + ["Photoshop.Image", "Photoshop.PSD"]
     for pid in ps_progids:
         try:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{pid}\\DefaultIcon") as k:
@@ -175,34 +249,21 @@ def repair_adobe_associations():
         except Exception:
             pass
 
-    # Ensure .psd has a valid ProgID or DefaultIcon
-    try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\.psd") as k:
-            cur_val = ""
-            try:
-                cur_val, _ = winreg.QueryValueEx(k, "")
-            except Exception:
-                pass
-            if not cur_val:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Photoshop.Image.24")
-                winreg.SetValueEx(k, "Content Type", 0, winreg.REG_SZ, "image/vnd.adobe.photoshop")
-    except Exception:
-        pass
-
-    try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\.psd\\DefaultIcon") as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
-    except Exception:
-        pass
-
-    try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\.psb\\DefaultIcon") as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
-    except Exception:
-        pass
+    # Ensure .psd / .psb have valid DefaultIcons in HKCU
+    for ext in [".psd", ".psb"]:
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{ext}\\DefaultIcon") as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
+        except Exception:
+            pass
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\SystemFileAssociations\\{ext}\\DefaultIcon") as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
+        except Exception:
+            pass
 
     # 2. Repair Illustrator ProgIDs & .ai / .eps
-    ai_progids = [f"Adobe.Illustrator.{v}" for v in range(15, 35)] + ["Adobe.Illustrator", "Adobe.Illustrator.EPS"]
+    ai_progids = [f"Adobe.Illustrator.{v}" for v in range(15, 35)] + ["Adobe.Illustrator", "Adobe.Illustrator.EPS", "Illustrator.AI", "Illustrator.EPS"]
     for pid in ai_progids:
         try:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{pid}\\DefaultIcon") as k:
@@ -210,30 +271,17 @@ def repair_adobe_associations():
         except Exception:
             pass
 
-    try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\.ai") as k:
-            cur_val = ""
-            try:
-                cur_val, _ = winreg.QueryValueEx(k, "")
-            except Exception:
-                pass
-            if not cur_val:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Adobe.Illustrator.24")
-                winreg.SetValueEx(k, "Content Type", 0, winreg.REG_SZ, "application/illustrator")
-    except Exception:
-        pass
-
-    try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\.ai\\DefaultIcon") as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
-    except Exception:
-        pass
-
-    try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\.eps\\DefaultIcon") as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
-    except Exception:
-        pass
+    for ext in [".ai", ".eps"]:
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{ext}\\DefaultIcon") as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
+        except Exception:
+            pass
+        try:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\SystemFileAssociations\\{ext}\\DefaultIcon") as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
+        except Exception:
+            pass
 
     # 3. Ensure ShowTypeOverlay is enabled
     try:
@@ -292,6 +340,33 @@ def touch_file_for_shell_regeneration(file_path: str) -> bool:
         return True
     except Exception:
         return False
+
+def restart_explorer_and_purge_thumbcache():
+    """
+    Kills explorer.exe, completely purges Windows Explorer thumbcache and iconcache,
+    and restarts explorer.exe cleanly. This eradicates all stuck white blank badges instantly!
+    """
+    if not IS_WINDOWS:
+        return
+
+    script = """@echo off
+taskkill /f /im explorer.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+del /f /q "%LocalAppData%\\IconCache.db" >nul 2>&1
+del /f /q "%LocalAppData%\\Microsoft\\Windows\\Explorer\\iconcache_*.db" >nul 2>&1
+del /f /q "%LocalAppData%\\Microsoft\\Windows\\Explorer\\thumbcache_*.db" >nul 2>&1
+start explorer.exe
+"""
+    try:
+        temp_bat = Path(os.environ.get("TEMP", os.getcwd())) / "rawview_purge_thumbcache.bat"
+        temp_bat.write_text(script, encoding="utf-8")
+        subprocess.Popen(["cmd.exe", "/c", str(temp_bat)], creationflags=0x08000000)
+    except Exception:
+        try:
+            subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True)
+            subprocess.Popen(["explorer.exe"])
+        except Exception:
+            pass
 
 def run_full_shell_repair():
     """Runs the complete self-healing suite for Windows Explorer shell icons."""
