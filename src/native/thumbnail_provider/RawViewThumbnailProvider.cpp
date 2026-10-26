@@ -73,14 +73,13 @@ std::wstring CRawViewThumbnailProvider::GetCacheFilePath(UINT cx) {
         return L"";
     }
 
-    std::wstringstream ss;
-    ss << localAppData << L"\\RawView\\cache\\thumbs";
-    std::wstring thumbDir = ss.str();
-    CreateDirectoryW(thumbDir.c_str(), NULL);
+    wchar_t thumbDir[MAX_PATH + 64];
+    swprintf_s(thumbDir, L"%s\\RawView\\cache\\thumbs", localAppData);
+    CreateDirectoryW(thumbDir, NULL);
 
-    std::wstringstream fileName;
-    fileName << thumbDir << L"\\thumb_" << std::hex << pathHash << L"_" << mtime << L"_" << cx << L".bmp";
-    return fileName.str();
+    wchar_t fileName[MAX_PATH + 128];
+    swprintf_s(fileName, L"%s\\thumb_%llx_%llx_%u.bmp", thumbDir, (unsigned long long)pathHash, (unsigned long long)mtime, cx);
+    return std::wstring(fileName);
 }
 
 bool CRawViewThumbnailProvider::FetchFromDiskCache(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha) {
@@ -121,7 +120,6 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     );
 
     if (hPipe == INVALID_HANDLE_VALUE) {
-        // If pipe is busy with another Explorer thread, wait briefly up to 250ms
         if (GetLastError() == ERROR_PIPE_BUSY) {
             if (WaitNamedPipeW(L"\\\\.\\pipe\\RawViewThumbnailPipe", 250)) {
                 hPipe = CreateFileW(
@@ -140,11 +138,9 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
         }
     }
 
-    // Set pipe to message mode
     DWORD dwMode = PIPE_READMODE_MESSAGE;
     SetNamedPipeHandleState(hPipe, &dwMode, NULL, NULL);
 
-    // Prepare request
     ThumbnailRequest req;
     req.magic = RVTP_MAGIC;
     req.cx = cx;
@@ -164,7 +160,6 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
         }
     }
 
-    // Read response header
     ThumbnailResponseHeader resp;
     DWORD bytesRead = 0;
     if (!ReadFile(hPipe, &resp, sizeof(resp), &bytesRead, NULL) || bytesRead < sizeof(resp)) {
@@ -177,12 +172,22 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
         return false;
     }
 
-    // Allocate buffer for pixel data
-    std::vector<uint8_t> buffer(resp.dataSize);
+    DWORD expectedBytes = resp.width * resp.height * 4;
+    if (resp.width == 0 || resp.height == 0 || resp.dataSize != expectedBytes || resp.dataSize > 32 * 1024 * 1024) {
+        CloseHandle(hPipe);
+        return false;
+    }
+
+    BYTE* buffer = (BYTE*)HeapAlloc(GetProcessHeap(), 0, resp.dataSize);
+    if (!buffer) {
+        CloseHandle(hPipe);
+        return false;
+    }
+
     DWORD totalRead = 0;
     while (totalRead < resp.dataSize) {
         DWORD chunkRead = 0;
-        if (!ReadFile(hPipe, buffer.data() + totalRead, resp.dataSize - totalRead, &chunkRead, NULL) || chunkRead == 0) {
+        if (!ReadFile(hPipe, buffer + totalRead, resp.dataSize - totalRead, &chunkRead, NULL) || chunkRead == 0) {
             break;
         }
         totalRead += chunkRead;
@@ -190,10 +195,10 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     CloseHandle(hPipe);
 
     if (totalRead != resp.dataSize) {
+        HeapFree(GetProcessHeap(), 0, buffer);
         return false;
     }
 
-    // Construct 32-bit ARGB DIBSection
     BITMAPINFO bmi = {0};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = (LONG)resp.width;
@@ -205,10 +210,12 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     void* pBits = nullptr;
     HBITMAP hbmp = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
     if (!hbmp || !pBits) {
+        HeapFree(GetProcessHeap(), 0, buffer);
         return false;
     }
 
-    memcpy(pBits, buffer.data(), resp.dataSize);
+    memcpy(pBits, buffer, resp.dataSize);
+    HeapFree(GetProcessHeap(), 0, buffer);
 
     *phbmp = hbmp;
     *pdwAlpha = WTSAT_ARGB;
@@ -216,48 +223,48 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
 }
 
 static void EnsureBackgroundDaemonRunning() {
-    // Throttle attempts to launch the background service: at most once every 15 seconds
     static ULONGLONG s_lastLaunchTick = 0;
     ULONGLONG now = GetTickCount64();
-    if (now - s_lastLaunchTick < 15000) {
+    if (now - s_lastLaunchTick < 30000) {
         return;
     }
-
-    // Check if RawView single instance mutex is already active
-    HANDLE hMutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex");
-    if (hMutex) {
-        CloseHandle(hMutex);
-        return;
-    }
-
     s_lastLaunchTick = now;
+
+    // Check if RawView single instance mutex is active
+    HANDLE hMutex1 = OpenMutexW(SYNCHRONIZE, FALSE, L"RawView_SingleInstance_Mutex_v4.1.2");
+    if (hMutex1) {
+        CloseHandle(hMutex1);
+        return;
+    }
+    HANDLE hMutex2 = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex_v4.1.2");
+    if (hMutex2) {
+        CloseHandle(hMutex2);
+        return;
+    }
 
     // Locate RawView.exe in same directory as this DLL or standard install dir
     wchar_t dllPath[MAX_PATH];
     if (!GetModuleFileNameW(g_hInst, dllPath, MAX_PATH)) return;
     PathRemoveFileSpecW(dllPath);
 
-    std::wstring exePath = std::wstring(dllPath) + L"\\RawView.exe";
-    if (GetFileAttributesW(exePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        exePath = L"C:\\Program Files\\RawView\\RawView.exe";
-        if (GetFileAttributesW(exePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+    wchar_t exePath[MAX_PATH];
+    swprintf_s(exePath, L"%s\\RawView.exe", dllPath);
+    if (GetFileAttributesW(exePath) == INVALID_FILE_ATTRIBUTES) {
+        wcscpy_s(exePath, L"C:\\Program Files\\RawView\\RawView.exe");
+        if (GetFileAttributesW(exePath) == INVALID_FILE_ATTRIBUTES) {
             return;
         }
     }
 
-    std::wstringstream cmd;
-    cmd << L"\"" << exePath << L"\" --minimized";
+    wchar_t cmd[MAX_PATH + 64];
+    swprintf_s(cmd, L"\"%s\" --minimized", exePath);
 
     STARTUPINFOW si = { sizeof(si) };
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
     PROCESS_INFORMATION pi = { 0 };
 
-    std::vector<wchar_t> cmdBuf(cmd.str().begin(), cmd.str().end());
-    cmdBuf.push_back(0);
-
-    // Launch daemon in background, detached, DO NOT block Explorer
-    if (CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
+    if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     }
@@ -270,19 +277,23 @@ IFACEMETHODIMP CRawViewThumbnailProvider::GetThumbnail(UINT cx, HBITMAP *phbmp, 
 
     if (m_filePath.empty()) return E_FAIL;
 
-    // Tier 1: Check ultra-fast disk cache (<1ms)
-    if (FetchFromDiskCache(cx, phbmp, pdwAlpha)) {
-        return S_OK;
-    }
+    try {
+        // Tier 1: Check ultra-fast disk cache (<1ms)
+        if (FetchFromDiskCache(cx, phbmp, pdwAlpha)) {
+            return S_OK;
+        }
 
-    // Tier 2: Check live background service via Named Pipe (<10ms)
-    if (FetchFromPipe(cx, phbmp, pdwAlpha)) {
-        return S_OK;
-    }
+        // Tier 2: Check live background service via Named Pipe (<10ms)
+        if (FetchFromPipe(cx, phbmp, pdwAlpha)) {
+            return S_OK;
+        }
 
-    // If background service is closed, gently trigger a single background startup without blocking Explorer.
-    // Return E_FAIL immediately so Windows Explorer stays 100% fluid and responsive.
-    EnsureBackgroundDaemonRunning();
+        // Gently trigger background service startup if not already running
+        EnsureBackgroundDaemonRunning();
+    }
+    catch (...) {
+        return E_FAIL;
+    }
 
     return E_FAIL;
 }
