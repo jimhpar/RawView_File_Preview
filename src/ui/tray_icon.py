@@ -130,6 +130,12 @@ class TrayManager(QObject):
 
     def show_settings(self):
         try:
+            try:
+                if self.settings_dialog is not None:
+                    _ = self.settings_dialog.isVisible()
+            except RuntimeError:
+                self.settings_dialog = None
+
             if not self.settings_dialog:
                 self.settings_dialog = SettingsDialog(self.config)
                 self.settings_dialog.config_changed.connect(self._on_settings_saved)

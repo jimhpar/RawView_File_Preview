@@ -542,11 +542,9 @@ def main():
     # Start RawView Engine
     rawview = RawViewApp(config)
 
-    # On macOS, when launched interactively from Applications without --minimized,
-    # show the settings dialog so user gets immediate visual confirmation
-    if IS_MACOS and not args.minimized:
-        rawview.tray_manager.show_settings()
-    elif args.settings:
+    # When launched interactively without --minimized (from Desktop shortcut, Start Menu, or Installer finish),
+    # immediately show the settings dialog so user gets immediate visual confirmation!
+    if not args.minimized or args.settings:
         rawview.tray_manager.show_settings()
 
     print(f"{APP_NAME} {APP_VERSION} initialized successfully. Monitoring file hover in background.")

@@ -57,8 +57,13 @@ class SettingsDialog(QDialog):
         self._init_ui()
 
     def _init_style(self):
-        assets_dir = Path(__file__).resolve().parent.parent.parent / "assets"
-        checkmark_svg = (assets_dir / "checkmark.svg").as_posix()
+        if getattr(sys, "frozen", False):
+            assets_dir = Path(sys.executable).parent / "assets"
+            if not assets_dir.exists():
+                assets_dir = Path(sys.executable).parent / "_internal" / "assets"
+        else:
+            assets_dir = Path(__file__).resolve().parent.parent.parent / "assets"
+        checkmark_svg = (assets_dir / "checkmark.svg").as_posix() if assets_dir.exists() else ""
 
         self.setStyleSheet(f"""
             QDialog {{
