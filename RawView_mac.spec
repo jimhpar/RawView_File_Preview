@@ -29,8 +29,8 @@ hiddenimports = [
     'src.core.badge_engine'
 ]
 
-# Collect essential packages
-for pkg in ['pypdfium2', 'pymupdf', 'psd_tools', 'PyQt6', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets', 'reportlab', 'rawpy', 'py7zr']:
+# Collect essential non-Qt packages (PyQt6 is handled by PyInstaller hooks to avoid framework duplication)
+for pkg in ['pypdfium2', 'pymupdf', 'psd_tools', 'reportlab', 'rawpy', 'py7zr']:
     try:
         tmp_ret = collect_all(pkg)
         datas += tmp_ret[0]
@@ -52,6 +52,25 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+# Deduplicate binaries and datas to prevent framework symlink collisions on macOS
+seen_bin = set()
+deduped_bin = []
+for item in a.binaries:
+    dest = item[0]
+    if dest not in seen_bin:
+        seen_bin.add(dest)
+        deduped_bin.append(item)
+a.binaries = deduped_bin
+
+seen_data = set()
+deduped_data = []
+for item in a.datas:
+    dest = item[0]
+    if dest not in seen_data:
+        seen_data.add(dest)
+        deduped_data.append(item)
+a.datas = deduped_data
 
 pyz = PYZ(a.pure)
 
@@ -92,8 +111,8 @@ app = BUNDLE(
         'CFBundleName': 'RawView',
         'CFBundleDisplayName': 'RawView',
         'CFBundleIdentifier': 'com.blackbox.rawview',
-        'CFBundleVersion': '3.9.8',
-        'CFBundleShortVersionString': '3.9.8',
+        'CFBundleVersion': '4.2.5',
+        'CFBundleShortVersionString': '4.2.5',
         'NSHumanReadableCopyright': 'Copyright © 2026 BlackBox THC. All rights reserved.',
         'NSHighResolutionCapable': True,
         'LSMinimumSystemVersion': '11.0',
