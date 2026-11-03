@@ -229,8 +229,8 @@ def repair_adobe_associations():
     ps_exe = find_installed_photoshop()
     ai_exe = find_installed_illustrator()
 
-    ps_icon_path = f"{ps_exe},1" if ps_exe else ps_ico
-    ai_icon_path = f"{ai_exe},1" if ai_exe else ai_ico
+    ps_icon_path = f"{ps_exe},0" if ps_exe else ps_ico
+    ai_icon_path = f"{ai_exe},0" if ai_exe else ai_ico
 
     # 1. Repair Photoshop ProgIDs & .psd / .psb
     ps_progids = [f"Photoshop.Image.{v}" for v in range(15, 35)] + ["Photoshop.Image", "Photoshop.PSD"]
@@ -283,14 +283,31 @@ def repair_adobe_associations():
         except Exception:
             pass
 
-    # 3. Ensure ShowTypeOverlay is enabled
+    # 2b. Register system fallback ProgIDs for machines without Adobe
+    fallback_entries = [
+        ("RawView.PSD", ps_icon_path, "Photoshop Document"),
+        ("RawView.PSB", ps_icon_path, "Photoshop Large Document"),
+        ("RawView.AI", ai_icon_path, "Adobe Illustrator Artwork"),
+        ("RawView.EPS", ai_icon_path, "Encapsulated PostScript"),
+    ]
+    for prog, icon, desc in fallback_entries:
+        for root in [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]:
+            try:
+                with winreg.CreateKey(root, f"Software\\Classes\\{prog}") as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, desc)
+                with winreg.CreateKey(root, f"Software\\Classes\\{prog}\\DefaultIcon") as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, icon)
+            except Exception:
+                pass
+
+    # 3. Disable Windows Explorer ShowTypeOverlay to eliminate conflicting white paper sheet overlays
     try:
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced") as k:
-            winreg.SetValueEx(k, "ShowTypeOverlay", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(k, "ShowTypeOverlay", 0, winreg.REG_DWORD, 0)
     except Exception:
         pass
 
-def flush_shell_icon_cache():
+def flush_shell_icon_cache(broadcast: bool = False):
     """Flushes Windows icon cache and triggers full Explorer association update."""
     if not IS_WINDOWS:
         return
@@ -302,12 +319,33 @@ def flush_shell_icon_cache():
         except Exception:
             pass
 
-    try:
-        import ctypes
-        if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
-            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
-    except Exception:
-        pass
+    if broadcast:
+        try:
+            import ctypes
+            if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
+                ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+        except Exception:
+            pass
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+            HWND_BROADCAST = 0xFFFF
+            WM_SETTINGCHANGE = 0x001A
+            SMTO_ABORTIFHUNG = 0x0002
+            result = wintypes.DWORD()
+            if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "user32"):
+                ctypes.windll.user32.SendMessageTimeoutW(
+                    HWND_BROADCAST,
+                    WM_SETTINGCHANGE,
+                    0,
+                    ctypes.c_wchar_p("ShellState"),
+                    SMTO_ABORTIFHUNG,
+                    1500,
+                    ctypes.byref(result)
+                )
+        except Exception:
+            pass
 
 def touch_file_for_shell_regeneration(file_path: str) -> bool:
     """
@@ -381,9 +419,9 @@ def ensure_process_isolation_disabled():
     except Exception:
         pass
 
-def run_full_shell_repair():
+def run_full_shell_repair(broadcast: bool = True):
     """Runs the complete self-healing suite for Windows Explorer shell icons."""
     clean_user_shadow_keys()
     ensure_process_isolation_disabled()
     repair_adobe_associations()
-    flush_shell_icon_cache()
+    flush_shell_icon_cache(broadcast=broadcast)

@@ -3,6 +3,7 @@ import sys
 import struct
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from PyQt6.QtGui import QImage
 from PyQt6.QtCore import Qt, QObject, pyqtSignal
@@ -42,7 +43,9 @@ def get_thumb_cache_path(file_path: str, cx: int) -> Path:
     local_app_data = os.environ.get("LOCALAPPDATA") or str(CACHE_DIR.parent)
     thumbs_dir = Path(local_app_data) / "RawView" / "cache" / "thumbs"
     thumbs_dir.mkdir(parents=True, exist_ok=True)
-    return thumbs_dir / f"thumb_{h:x}_{mtime:x}_{cx}.bmp"
+    from src.core.config import get_show_system_icon_overlay
+    m_val = 1 if get_show_system_icon_overlay() else 0
+    return thumbs_dir / f"thumb_{h:x}_{mtime:x}_{cx}_m{m_val}.bmp"
 
 def render_thumbnail(file_path: str, cx: int) -> QImage | None:
     """Decodes and scales file thumbnail to requested dimension cx."""
@@ -65,6 +68,22 @@ def render_thumbnail(file_path: str, cx: int) -> QImage | None:
 
         # Convert to ARGB32 (little-endian byte order: B, G, R, A matching Windows DIB)
         argb_img = thumb.convertToFormat(QImage.Format.Format_ARGB32)
+
+        # Format Badging:
+        # If System Icon Badge is ON (get_show_system_icon_overlay() == True):
+        # Explorer generates its own registered system application icon overlay.
+        # RawView does NOT stamp badges in the background, avoiding any double-icon collisions!
+        # If System Icon Badge is OFF (Default):
+        # RawView stamps crisp, uniform format badges (Ps, Ai, EPS, PDF, etc.) directly.
+        try:
+            from src.core.config import get_show_system_icon_overlay
+            if not get_show_system_icon_overlay():
+                from src.core.badge_engine import stamp_format_badge
+                ext = Path(file_path).suffix.lower()
+                argb_img = stamp_format_badge(argb_img, ext, mode="always", target_cx=cx)
+        except Exception:
+            pass
+
         return argb_img
     except Exception as e:
         print(f"[ThumbnailServer] Decode error for {file_path}: {e}")
@@ -99,19 +118,27 @@ class ThumbnailPipeServer(QObject):
         super().__init__(parent)
         self.running = False
         self.thread = None
+        self.executor = None
 
     def start(self):
         if not IS_WINDOWS or self.running:
             return
         self.running = True
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ThumbWorker")
         self.thread = threading.Thread(target=self._run_server, daemon=True, name="RawViewThumbnailServer")
         self.thread.start()
-        print(f"[+] RawView Thumbnail Named Pipe Server listening on {PIPE_NAME}")
+        print(f"[+] RawView Thumbnail Named Pipe Server listening on {PIPE_NAME} (Bounded 4-Worker Pool)")
 
     def stop(self):
         if not self.running:
             return
         self.running = False
+        if self.executor:
+            try:
+                self.executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            self.executor = None
         try:
             import win32file
             h = win32file.CreateFile(
@@ -187,9 +214,12 @@ class ThumbnailPipeServer(QObject):
                             pass
                         continue
 
-                # Handle client in a worker thread to allow concurrent requests
-                t = threading.Thread(target=self._handle_client, args=(h_pipe,), daemon=True)
-                t.start()
+                # Handle client in bounded threadpool to process smoothly without CPU spikes or deadlocks
+                if self.executor:
+                    self.executor.submit(self._handle_client, h_pipe)
+                else:
+                    t = threading.Thread(target=self._handle_client, args=(h_pipe,), daemon=True)
+                    t.start()
 
             except Exception as e:
                 if self.running:

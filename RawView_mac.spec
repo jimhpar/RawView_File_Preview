@@ -25,7 +25,8 @@ hiddenimports = [
     'py7zr',
     'src.core.bijoy_converter',
     'src.core.updater',
-    'src.ui.update_dialog'
+    'src.ui.update_dialog',
+    'src.core.badge_engine'
 ]
 
 # Collect essential packages

@@ -110,8 +110,17 @@ std::wstring CRawViewThumbnailProvider::GetCacheFilePath(UINT cx) {
     swprintf_s(thumbDir, L"%s\\RawView\\cache\\thumbs", localAppData);
     CreateDirectoryW(thumbDir, NULL);
 
+    // Read ShowTypeOverlay (0 = RawView stamped badges, 1 = Explorer system overlay)
+    DWORD showTypeOverlay = 0;
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD dwSize = sizeof(showTypeOverlay);
+        RegQueryValueExW(hKey, L"ShowTypeOverlay", NULL, NULL, (LPBYTE)&showTypeOverlay, &dwSize);
+        RegCloseKey(hKey);
+    }
+
     wchar_t fileName[MAX_PATH + 128];
-    swprintf_s(fileName, L"%s\\thumb_%llx_%llx_%u.bmp", thumbDir, (unsigned long long)pathHash, (unsigned long long)mtime, cx);
+    swprintf_s(fileName, L"%s\\thumb_%llx_%llx_%u_m%u.bmp", thumbDir, (unsigned long long)pathHash, (unsigned long long)mtime, cx, (unsigned int)(showTypeOverlay ? 1 : 0));
     return std::wstring(fileName);
 }
 
@@ -141,6 +150,52 @@ bool CRawViewThumbnailProvider::FetchFromDiskCache(UINT cx, HBITMAP *phbmp, WTS_
     return false;
 }
 
+static bool ReadPipeWithTimeout(HANDLE hPipe, HANDLE hEvent, void* pBuffer, DWORD dwBytesToRead, DWORD dwTimeoutMs) {
+    OVERLAPPED ov = { 0 };
+    ov.hEvent = hEvent;
+    ResetEvent(hEvent);
+    DWORD bytesRead = 0;
+    BOOL ok = ReadFile(hPipe, pBuffer, dwBytesToRead, &bytesRead, &ov);
+    if (!ok) {
+        if (GetLastError() == ERROR_IO_PENDING) {
+            DWORD waitRes = WaitForSingleObject(hEvent, dwTimeoutMs);
+            if (waitRes != WAIT_OBJECT_0) {
+                CancelIo(hPipe);
+                return false;
+            }
+            if (!GetOverlappedResult(hPipe, &ov, &bytesRead, FALSE)) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    return bytesRead == dwBytesToRead;
+}
+
+static bool WritePipeWithTimeout(HANDLE hPipe, HANDLE hEvent, const void* pBuffer, DWORD dwBytesToWrite, DWORD dwTimeoutMs) {
+    OVERLAPPED ov = { 0 };
+    ov.hEvent = hEvent;
+    ResetEvent(hEvent);
+    DWORD bytesWritten = 0;
+    BOOL ok = WriteFile(hPipe, pBuffer, dwBytesToWrite, &bytesWritten, &ov);
+    if (!ok) {
+        if (GetLastError() == ERROR_IO_PENDING) {
+            DWORD waitRes = WaitForSingleObject(hEvent, dwTimeoutMs);
+            if (waitRes != WAIT_OBJECT_0) {
+                CancelIo(hPipe);
+                return false;
+            }
+            if (!GetOverlappedResult(hPipe, &ov, &bytesWritten, FALSE)) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    return bytesWritten == dwBytesToWrite;
+}
+
 bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHATYPE *pdwAlpha) {
     HANDLE hPipe = CreateFileW(
         L"\\\\.\\pipe\\RawViewThumbnailPipe",
@@ -148,20 +203,20 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
         0,
         NULL,
         OPEN_EXISTING,
-        0,
+        FILE_FLAG_OVERLAPPED,
         NULL
     );
 
     if (hPipe == INVALID_HANDLE_VALUE) {
         if (GetLastError() == ERROR_PIPE_BUSY) {
-            if (WaitNamedPipeW(L"\\\\.\\pipe\\RawViewThumbnailPipe", 250)) {
+            if (WaitNamedPipeW(L"\\\\.\\pipe\\RawViewThumbnailPipe", 5000)) {
                 hPipe = CreateFileW(
                     L"\\\\.\\pipe\\RawViewThumbnailPipe",
                     GENERIC_READ | GENERIC_WRITE,
                     0,
                     NULL,
                     OPEN_EXISTING,
-                    0,
+                    FILE_FLAG_OVERLAPPED,
                     NULL
                 );
             }
@@ -169,6 +224,12 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
         if (hPipe == INVALID_HANDLE_VALUE) {
             return false;
         }
+    }
+
+    HANDLE hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!hEvent) {
+        CloseHandle(hPipe);
+        return false;
     }
 
     DWORD dwMode = PIPE_READMODE_MESSAGE;
@@ -179,58 +240,61 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     req.cx = cx;
     req.pathCharCount = (uint32_t)m_filePath.size();
 
-    DWORD bytesWritten = 0;
-    if (!WriteFile(hPipe, &req, sizeof(req), &bytesWritten, NULL)) {
+    // Send header with 5-second write timeout
+    if (!WritePipeWithTimeout(hPipe, hEvent, &req, sizeof(req), 5000)) {
+        CloseHandle(hEvent);
         CloseHandle(hPipe);
         return false;
     }
 
+    // Send path characters with 5-second write timeout
     if (!m_filePath.empty()) {
         DWORD pathBytes = (DWORD)(m_filePath.size() * sizeof(wchar_t));
-        if (!WriteFile(hPipe, m_filePath.c_str(), pathBytes, &bytesWritten, NULL)) {
+        if (!WritePipeWithTimeout(hPipe, hEvent, m_filePath.c_str(), pathBytes, 5000)) {
+            CloseHandle(hEvent);
             CloseHandle(hPipe);
             return false;
         }
     }
 
+    // Read response header with 10-second timeout (ensures even huge 200MB+ PSD files finish rendering without dropping)
     ThumbnailResponseHeader resp;
-    DWORD bytesRead = 0;
-    if (!ReadFile(hPipe, &resp, sizeof(resp), &bytesRead, NULL) || bytesRead < sizeof(resp)) {
+    if (!ReadPipeWithTimeout(hPipe, hEvent, &resp, sizeof(resp), 10000)) {
+        CloseHandle(hEvent);
         CloseHandle(hPipe);
         return false;
     }
 
     if (resp.magic != RVTP_MAGIC || resp.status != RVTP_STATUS_OK || resp.dataSize == 0) {
+        CloseHandle(hEvent);
         CloseHandle(hPipe);
         return false;
     }
 
     DWORD expectedBytes = resp.width * resp.height * 4;
     if (resp.width == 0 || resp.height == 0 || resp.dataSize != expectedBytes || resp.dataSize > 32 * 1024 * 1024) {
+        CloseHandle(hEvent);
         CloseHandle(hPipe);
         return false;
     }
 
     BYTE* buffer = (BYTE*)HeapAlloc(GetProcessHeap(), 0, resp.dataSize);
     if (!buffer) {
+        CloseHandle(hEvent);
         CloseHandle(hPipe);
         return false;
     }
 
-    DWORD totalRead = 0;
-    while (totalRead < resp.dataSize) {
-        DWORD chunkRead = 0;
-        if (!ReadFile(hPipe, buffer + totalRead, resp.dataSize - totalRead, &chunkRead, NULL) || chunkRead == 0) {
-            break;
-        }
-        totalRead += chunkRead;
-    }
-    CloseHandle(hPipe);
-
-    if (totalRead != resp.dataSize) {
+    // Read bitmap data with 10-second timeout
+    if (!ReadPipeWithTimeout(hPipe, hEvent, buffer, resp.dataSize, 10000)) {
         HeapFree(GetProcessHeap(), 0, buffer);
+        CloseHandle(hEvent);
+        CloseHandle(hPipe);
         return false;
     }
+
+    CloseHandle(hEvent);
+    CloseHandle(hPipe);
 
     BITMAPINFO bmi = {0};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -264,12 +328,12 @@ static void EnsureBackgroundDaemonRunning() {
     s_lastLaunchTick = now;
 
     // Check if RawView single instance mutex is active
-    HANDLE hMutex1 = OpenMutexW(SYNCHRONIZE, FALSE, L"RawView_SingleInstance_Mutex_v4.1.2");
+    HANDLE hMutex1 = OpenMutexW(SYNCHRONIZE, FALSE, L"RawView_SingleInstance_Mutex_v4.2.5");
     if (hMutex1) {
         CloseHandle(hMutex1);
         return;
     }
-    HANDLE hMutex2 = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex_v4.1.2");
+    HANDLE hMutex2 = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex_v4.2.5");
     if (hMutex2) {
         CloseHandle(hMutex2);
         return;

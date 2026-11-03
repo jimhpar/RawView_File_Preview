@@ -229,7 +229,7 @@ class RawViewApp(QObject):
 
         # 5. Always-Active Windows Explorer Thumbnail IPC Server (Serves thumbnails even when hover is toggled off)
         self.thumbnail_server = ThumbnailPipeServer()
-        self.thumbnail_server.settings_requested.connect(self.tray_manager.show_settings)
+        self.thumbnail_server.settings_requested.connect(self._on_ipc_settings_requested)
         self.thumbnail_server.start()
 
         # 6. Deferred Weekly Background Update Check (10s after startup)
@@ -244,7 +244,7 @@ class RawViewApp(QObject):
                     import time
                     time.sleep(2)
                     from src.core.shell_icon_repair import run_full_shell_repair
-                    run_full_shell_repair()
+                    run_full_shell_repair(broadcast=False)
                 except Exception:
                     pass
             threading.Thread(target=_async_icon_repair, daemon=True).start()
@@ -383,6 +383,12 @@ class RawViewApp(QObject):
             f"Could not connect to GitHub to check for updates:\n{error_msg}"
         )
 
+    def _on_ipc_settings_requested(self):
+        """Called when an external process requests to show settings or reloads config."""
+        self.config = load_config()
+        self.tray_manager.config = self.config
+        self.tray_manager.show_settings()
+
     def shutdown(self):
         if getattr(self, "hotkey_registered", False) and user32:
             try:
@@ -494,25 +500,50 @@ def main():
 
     # Enforce Single Instance
     if not check_single_instance():
-        if IS_WINDOWS:
-            # If user launched RawView again or clicked settings, notify the background instance to bring up Settings!
+        if args.minimized:
+            # Background daemon launch, already running -> exit silently
+            sys.exit(0)
+
+        # User explicitly launched RawView (Desktop shortcut, Start menu, or --settings)!
+        # Open SettingsDialog directly in the foreground with full focus and interactive responsiveness!
+        print(f"{APP_NAME} background daemon is active. Opening Settings window in foreground...")
+        try:
+            if IS_WINDOWS and user32:
+                try:
+                    user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+                except Exception:
+                    pass
+
+            app = QApplication(sys.argv)
+            app.setApplicationName(APP_NAME)
+            app.setApplicationVersion(APP_VERSION)
+            app.setQuitOnLastWindowClosed(True)
+            app.setWindowIcon(create_app_icon(128))
+            font = QFont(".AppleSystemUIFont", 11) if IS_MACOS else QFont("Segoe UI", 9)
+            app.setFont(font)
+
+            from src.ui.settings_dialog import SettingsDialog
+            config = load_config()
+            dlg = SettingsDialog(config)
+
+            # Center on primary screen
+            screen = app.primaryScreen()
+            if screen:
+                geo = screen.availableGeometry()
+                dlg.move(
+                    geo.center().x() - dlg.width() // 2,
+                    geo.center().y() - dlg.height() // 2
+                )
+
+            dlg.exec()
+            # Also notify running background instance to reload its config
             try:
                 from src.core.thumbnail_server import notify_running_instance_to_show_settings
                 notify_running_instance_to_show_settings()
             except Exception:
                 pass
-        elif IS_MACOS:
-            try:
-                temp_app = QApplication(sys.argv)
-                from PyQt6.QtWidgets import QMessageBox
-                QMessageBox.information(
-                    None,
-                    "RawView",
-                    f"{APP_NAME} is already running in your top Menu Bar.\nLook for the RawView icon near the clock."
-                )
-            except Exception:
-                pass
-        print(f"{APP_NAME} is already running in background.")
+        except Exception as e:
+            print(f"Error opening foreground settings: {e}")
         sys.exit(0)
     # Enable Per-Monitor DPI Awareness V2 on Windows for multi-monitor accuracy
     if IS_WINDOWS and user32:

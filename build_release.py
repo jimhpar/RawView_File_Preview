@@ -163,7 +163,7 @@ def sign_binary(target_path: Path, cert_path: str = "", cert_pass: str = "") -> 
         print(f"[-] PowerShell signing failed: {res.stderr or res.stdout}")
         return False
 
-def build(cert_path: str = "", cert_pass: str = ""):
+def build(cert_path: str = "", cert_pass: str = "", skip_pyinstaller: bool = False):
     from src.core.config import APP_VERSION, APP_PUBLISHER
     print("=" * 60)
     print(f" RawView {APP_VERSION} - Release & Installer Build Pipeline")
@@ -171,76 +171,89 @@ def build(cert_path: str = "", cert_pass: str = ""):
     print("=" * 60)
 
     # 1. Clean previous build artifacts
-    for d in [DIST_DIR, BUILD_DIR, INSTALLER_OUT]:
-        if d.exists():
-            shutil.rmtree(d, ignore_errors=True)
-        os.makedirs(d, exist_ok=True)
+    if not skip_pyinstaller:
+        for d in [DIST_DIR, BUILD_DIR, INSTALLER_OUT]:
+            if d.exists():
+                shutil.rmtree(d, ignore_errors=True)
+            os.makedirs(d, exist_ok=True)
+    else:
+        if INSTALLER_OUT.exists():
+            shutil.rmtree(INSTALLER_OUT, ignore_errors=True)
+        os.makedirs(INSTALLER_OUT, exist_ok=True)
 
     # 2. Generate Version Info Resource
     generate_version_info(VERSION_INFO_FILE, APP_VERSION, APP_PUBLISHER)
 
+    # Clean PATH of any prior installed RawView directories so PyInstaller doesn't inspect stale binaries
+    clean_paths = [p for p in os.environ.get("PATH", "").split(os.pathsep) if "rawview" not in p.lower()]
+    os.environ["PATH"] = os.pathsep.join(clean_paths)
+
     # 3. Compile with PyInstaller
-    icon_path = BASE_DIR / "assets" / "app_icon.ico"
-    print("\n[1/2] Compiling RawView.exe with PyInstaller (Anti-False-Positive settings)...")
-    pyinstaller_cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--noconsole",
-        "--noconfirm",
-        "--clean",
-        "--noupx",  # Disable UPX compression to avoid heuristic antivirus detection
-        f"--name=RawView",
-        f"--icon={icon_path}",
-        "--onedir",
-        f"--version-file={VERSION_INFO_FILE}",
-        "--add-data=assets;assets",
-        "--collect-all=pypdfium2",
-        "--collect-all=pymupdf",
-        "--collect-all=psd_tools",
-        "--collect-all=PyQt6",
-        "--collect-all=PyQt6.QtMultimedia",
-        "--collect-all=PyQt6.QtMultimediaWidgets",
-        "--collect-all=reportlab",
-        "--collect-all=rawpy",
-        "--hidden-import=rawpy",
-        "--hidden-import=PyQt6.QtSvg",
-        "--hidden-import=PyQt6.QtMultimedia",
-        "--hidden-import=PyQt6.QtMultimediaWidgets",
-        "--hidden-import=pypdfium2",
-        "--hidden-import=pymupdf",
-        "--hidden-import=fitz",
-        "--hidden-import=psd_tools",
-        "--hidden-import=PIL",
-        "--hidden-import=PIL.Image",
-        "--hidden-import=PIL.TiffImagePlugin",
-        "--hidden-import=PIL.PsdImagePlugin",
-        "--hidden-import=uiautomation",
-        "--hidden-import=comtypes",
-        "--hidden-import=win32gui",
-        "--hidden-import=win32process",
-        "--hidden-import=win32api",
-        "--hidden-import=win32con",
-        "--hidden-import=striprtf",
-        "--hidden-import=src.core.bijoy_converter",
-        "--hidden-import=src.core.updater",
-        "--hidden-import=src.ui.update_dialog",
-        "--hidden-import=src.core.thumbnail_server",
-        "--collect-all=py7zr",
-        "--hidden-import=rarfile",
-        "--hidden-import=py7zr",
-        "--hidden-import=win32pipe",
-        "--hidden-import=win32file",
-        "--hidden-import=win32event",
-        "--hidden-import=winerror",
-        "--hidden-import=src.core.shell_icon_repair",
-        str(BASE_DIR / "src" / "app.py")
-    ]
+    if not skip_pyinstaller:
+        icon_path = BASE_DIR / "assets" / "app_icon.ico"
+        print("\n[1/2] Compiling RawView.exe with PyInstaller (Anti-False-Positive settings)...")
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--noconsole",
+            "--noconfirm",
+            "--clean",
+            "--noupx",  # Disable UPX compression to avoid heuristic antivirus detection
+            f"--name=RawView",
+            f"--icon={icon_path}",
+            "--onedir",
+            f"--version-file={VERSION_INFO_FILE}",
+            "--add-data=assets;assets",
+            "--collect-all=pypdfium2",
+            "--collect-all=pymupdf",
+            "--collect-all=psd_tools",
+            "--collect-all=PyQt6",
+            "--collect-all=PyQt6.QtMultimedia",
+            "--collect-all=PyQt6.QtMultimediaWidgets",
+            "--collect-all=reportlab",
+            "--collect-all=rawpy",
+            "--hidden-import=rawpy",
+            "--hidden-import=PyQt6.QtSvg",
+            "--hidden-import=PyQt6.QtMultimedia",
+            "--hidden-import=PyQt6.QtMultimediaWidgets",
+            "--hidden-import=pypdfium2",
+            "--hidden-import=pymupdf",
+            "--hidden-import=fitz",
+            "--hidden-import=psd_tools",
+            "--hidden-import=PIL",
+            "--hidden-import=PIL.Image",
+            "--hidden-import=PIL.TiffImagePlugin",
+            "--hidden-import=PIL.PsdImagePlugin",
+            "--hidden-import=uiautomation",
+            "--hidden-import=comtypes",
+            "--hidden-import=win32gui",
+            "--hidden-import=win32process",
+            "--hidden-import=win32api",
+            "--hidden-import=win32con",
+            "--hidden-import=striprtf",
+            "--hidden-import=src.core.bijoy_converter",
+            "--hidden-import=src.core.updater",
+            "--hidden-import=src.ui.update_dialog",
+            "--hidden-import=src.core.thumbnail_server",
+            "--collect-all=py7zr",
+            "--hidden-import=rarfile",
+            "--hidden-import=py7zr",
+            "--hidden-import=win32pipe",
+            "--hidden-import=win32file",
+            "--hidden-import=win32event",
+            "--hidden-import=winerror",
+            "--hidden-import=src.core.shell_icon_repair",
+            "--hidden-import=src.core.badge_engine",
+            str(BASE_DIR / "src" / "app.py")
+        ]
 
-    res = subprocess.run(pyinstaller_cmd, cwd=str(BASE_DIR))
-    if res.returncode != 0:
-        print("ERROR: PyInstaller compilation failed.")
-        sys.exit(1)
+        res = subprocess.run(pyinstaller_cmd, cwd=str(BASE_DIR))
+        if res.returncode != 0:
+            print("ERROR: PyInstaller compilation failed.")
+            sys.exit(1)
 
-    print("PyInstaller build complete: dist/RawView/RawView.exe exists!")
+        print("PyInstaller build complete: dist/RawView/RawView.exe exists!")
+    else:
+        print("\n[INFO] Skipping PyInstaller compilation as requested (--skip-pyinstaller).")
 
     # Copy assets into dist/RawView/assets
     shutil.copytree(BASE_DIR / "assets", DIST_DIR / "RawView" / "assets", dirs_exist_ok=True)
@@ -299,6 +312,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RawView Release & Installer Build Pipeline")
     parser.add_argument("--cert", default="", help="Path to code signing .pfx certificate")
     parser.add_argument("--password", default="", help="Password for the .pfx certificate")
+    parser.add_argument("--skip-pyinstaller", action="store_true", help="Skip PyInstaller compilation and only build installer")
     args = parser.parse_args()
 
-    build(cert_path=args.cert, cert_pass=args.password)
+    build(cert_path=args.cert, cert_pass=args.password, skip_pyinstaller=args.skip_pyinstaller)

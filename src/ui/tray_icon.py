@@ -140,6 +140,15 @@ class TrayManager(QObject):
                 self.settings_dialog = SettingsDialog(self.config)
                 self.settings_dialog.config_changed.connect(self._on_settings_saved)
 
+            # Center dialog on screen
+            screen = QApplication.primaryScreen()
+            if screen:
+                geo = screen.availableGeometry()
+                self.settings_dialog.move(
+                    geo.center().x() - self.settings_dialog.width() // 2,
+                    geo.center().y() - self.settings_dialog.height() // 2
+                )
+
             self.settings_dialog.show()
             self.settings_dialog.showNormal()
             self.settings_dialog.raise_()
@@ -150,6 +159,9 @@ class TrayManager(QObject):
                 import ctypes
                 try:
                     hwnd = int(self.settings_dialog.winId())
+                    ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_TOPMOST
+                    ctypes.windll.user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_NOTOPMOST
                     ctypes.windll.user32.SetForegroundWindow(hwnd)
                 except Exception:
                     pass

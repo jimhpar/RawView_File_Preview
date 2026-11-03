@@ -261,8 +261,8 @@ STDAPI DllRegisterServer(void) {
         }
     }
 
-    // 5. Ensure "Display file icon on thumbnails" (App Badges: Ps, Ai) is enabled in Windows Explorer
-    SetRegistryDword(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", L"ShowTypeOverlay", 1);
+    // 5. Disable Windows Explorer ShowTypeOverlay to eliminate white sheet icon collisions
+    SetRegistryDword(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", L"ShowTypeOverlay", 0);
 
     // 6. Register "Refresh Thumbnail" in Explorer Context Menus
     wchar_t appExePath[MAX_PATH];

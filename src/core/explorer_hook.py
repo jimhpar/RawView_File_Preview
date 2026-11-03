@@ -352,7 +352,7 @@ class ExplorerHoverMonitor(QObject):
 
         # Timer ticks every 35ms for instant settle detection
         self.timer = QTimer(self)
-        self.timer.setInterval(35)
+        self.timer.setInterval(80)
         self.timer.timeout.connect(self._on_tick)
 
     def start(self):

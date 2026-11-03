@@ -6,37 +6,78 @@ IS_WINDOWS = sys.platform == "win32"
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QCheckBox,
     QPushButton, QGroupBox, QGridLayout, QMessageBox, QScrollArea, QWidget,
-    QLineEdit, QApplication, QTabWidget, QFrame
+    QLineEdit, QApplication, QTabWidget, QFrame, QAbstractButton
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl
-from PyQt6.QtGui import QIcon, QColor, QPalette, QDesktopServices
+from PyQt6.QtCore import (
+    Qt, pyqtSignal, QUrl, pyqtProperty, QPropertyAnimation, QEasingCurve, QRectF, QSize
+)
+from PyQt6.QtGui import (
+    QIcon, QColor, QPalette, QDesktopServices, QPainter, QBrush, QPen
+)
 from src.core.config import (
-    save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION, PAYMENT_INFO
+    save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION, PAYMENT_INFO,
+    get_show_system_icon_overlay, set_show_system_icon_overlay, purge_thumbs_cache
 )
 from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import get_license_status, activate_license, get_machine_id
 
 def get_show_type_overlay() -> bool:
-    """Checks whether Windows Explorer ShowTypeOverlay (app icon badge on thumbnails) is enabled."""
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", 0, winreg.KEY_READ) as key:
-            val, _ = winreg.QueryValueEx(key, "ShowTypeOverlay")
-            return bool(val)
-    except Exception:
-        return True
+    return get_show_system_icon_overlay()
 
 def set_show_type_overlay(enabled: bool):
-    """Enables or disables Windows Explorer ShowTypeOverlay (app icon badge on thumbnails) and notifies the shell."""
-    try:
-        import winreg
-        import ctypes
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, "ShowTypeOverlay", 0, winreg.REG_DWORD, 1 if enabled else 0)
-        if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
-            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
-    except Exception:
-        pass
+    set_show_system_icon_overlay(enabled)
+
+class ToggleSwitch(QAbstractButton):
+    """Modern iOS/Windows 11-style animated toggle switch."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setSizePolicy(self.sizePolicy().horizontalPolicy(), self.sizePolicy().verticalPolicy())
+        self._thumb_position = 3.0
+        self._anim = QPropertyAnimation(self, b"thumb_position", self)
+        self._anim.setDuration(160)
+        self._anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.toggled.connect(self._start_animation)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    @pyqtProperty(float)
+    def thumb_position(self) -> float:
+        return self._thumb_position
+
+    @thumb_position.setter
+    def thumb_position(self, pos: float):
+        self._thumb_position = pos
+        self.update()
+
+    def sizeHint(self) -> QSize:
+        return QSize(44, 24)
+
+    def setChecked(self, checked: bool):
+        super().setChecked(checked)
+        self._thumb_position = 23.0 if checked else 3.0
+        self.update()
+
+    def _start_animation(self, checked: bool):
+        self._anim.stop()
+        self._anim.setStartValue(self._thumb_position)
+        self._anim.setEndValue(23.0 if checked else 3.0)
+        self._anim.start()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Track background: Sky-600 when active, Slate-700 when inactive
+        track_color = QColor("#0284C7") if self.isChecked() else QColor("#334155")
+        p.setBrush(QBrush(track_color))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(0, 0, 44, 24, 12, 12)
+
+        # Sliding circular thumb
+        thumb_color = QColor("#FFFFFF") if self.isChecked() else QColor("#CBD5E1")
+        p.setBrush(QBrush(thumb_color))
+        p.drawEllipse(QRectF(self._thumb_position, 3.0, 18.0, 18.0))
+        p.end()
 
 class SettingsDialog(QDialog):
     """Modern dark-themed tabbed preferences dialog for RawView v4.1.2."""
@@ -399,16 +440,47 @@ class SettingsDialog(QDialog):
         explorer_group = QGroupBox("Windows Explorer Grid Thumbnails && Badges", self)
         explorer_layout = QVBoxLayout(explorer_group)
         explorer_layout.setContentsMargins(14, 12, 14, 10)
-        explorer_layout.setSpacing(6)
+        explorer_layout.setSpacing(10)
 
         status_lbl = QLabel("• Folder Thumbnails: Permanently Active 24/7 (PSD, AI, RAW, PDF, Office)", self)
         status_lbl.setStyleSheet("color: #34D399; font-weight: 600; font-size: 11px;")
         explorer_layout.addWidget(status_lbl)
 
-        self.show_app_badges_cb = QCheckBox("Display App Icon Badges on Thumbnails (Ps, Ai, PDF)", self)
-        self.show_app_badges_cb.setChecked(get_show_type_overlay())
-        self.show_app_badges_cb.setToolTip("Shows application icon badges (e.g. Photoshop 'Ps', Illustrator 'Ai') on top of file thumbnails.")
-        explorer_layout.addWidget(self.show_app_badges_cb)
+        # Toggle Switch Row: Display System Icon Badge
+        switch_row = QHBoxLayout()
+        switch_row.setSpacing(12)
+
+        self.system_badge_switch = ToggleSwitch(self)
+        self.system_badge_switch.setChecked(get_show_system_icon_overlay())
+        self.show_app_badges_cb = self.system_badge_switch  # Backward-compatibility alias
+
+        badge_info_layout = QVBoxLayout()
+        badge_info_layout.setSpacing(2)
+
+        self.system_badge_title = QLabel("Display System Icon Badge", self)
+        self.system_badge_title.setStyleSheet("color: #F8FAFC; font-weight: 600; font-size: 12px;")
+
+        self.system_badge_desc = QLabel(self)
+        self.system_badge_desc.setWordWrap(True)
+
+        def _update_badge_desc(checked: bool):
+            if checked:
+                self.system_badge_desc.setText("ON: Windows Explorer renders system app icons only. RawView badges are hidden.")
+                self.system_badge_desc.setStyleSheet("color: #38BDF8; font-size: 11px;")
+            else:
+                self.system_badge_desc.setText("OFF (Default): RawView stamps crisp format badges (Ps, Ai, PDF, EPS). System overlays hidden.")
+                self.system_badge_desc.setStyleSheet("color: #94A3B8; font-size: 11px;")
+
+        _update_badge_desc(self.system_badge_switch.isChecked())
+        self.system_badge_switch.toggled.connect(_update_badge_desc)
+
+        badge_info_layout.addWidget(self.system_badge_title)
+        badge_info_layout.addWidget(self.system_badge_desc)
+
+        switch_row.addWidget(self.system_badge_switch, alignment=Qt.AlignmentFlag.AlignVCenter)
+        switch_row.addLayout(badge_info_layout, stretch=1)
+
+        explorer_layout.addLayout(switch_row)
 
         refresh_cache_btn = QPushButton("🔄 Rebuild && Refresh Windows Thumbnail Cache", self)
         refresh_cache_btn.setStyleSheet("""
@@ -992,8 +1064,8 @@ class SettingsDialog(QDialog):
         # Software Updates
         self.config["auto_check_updates"] = self.auto_update_cb.isChecked()
 
-        # App Badges (ShowTypeOverlay in Windows Explorer)
-        set_show_type_overlay(self.show_app_badges_cb.isChecked())
+        # System Icon Overlay vs RawView Stamp Badges
+        set_show_system_icon_overlay(self.system_badge_switch.isChecked())
 
         save_config(self.config)
         self.config_changed.emit(self.config)
@@ -1038,14 +1110,9 @@ class SettingsDialog(QDialog):
     def _rebuild_thumbnail_cache(self):
         """Clears local thumbnail cache and prompts Windows Shell to rebuild thumbnails."""
         try:
-            import shutil
             import ctypes
-            from src.core.config import CACHE_DIR
-            set_show_type_overlay(self.show_app_badges_cb.isChecked())
-            thumbs_dir = CACHE_DIR / "thumbs"
-            if thumbs_dir.exists():
-                shutil.rmtree(thumbs_dir, ignore_errors=True)
-                thumbs_dir.mkdir(parents=True, exist_ok=True)
+            set_show_system_icon_overlay(self.system_badge_switch.isChecked())
+            purge_thumbs_cache()
             if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
                 ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
             QMessageBox.information(
