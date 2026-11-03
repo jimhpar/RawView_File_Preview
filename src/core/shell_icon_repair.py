@@ -2,12 +2,18 @@ import os
 import sys
 import glob
 import subprocess
-import winreg
 from pathlib import Path
 
 import stat as stat_module
 
 IS_WINDOWS = sys.platform == "win32"
+if IS_WINDOWS:
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+else:
+    winreg = None
 
 def get_assets_dir() -> Path:
     try:

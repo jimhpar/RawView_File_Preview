@@ -48,7 +48,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'uiautomation', 'win32gui', 'win32con', 'win32api', 'win32com', 'comtypes'],
+    excludes=['tkinter', 'matplotlib', 'uiautomation', 'win32gui', 'win32con', 'win32api', 'win32com', 'comtypes', 'winreg', 'win32pipe', 'win32file', 'win32event', 'winerror'],
     noarchive=False,
     optimize=0,
 )

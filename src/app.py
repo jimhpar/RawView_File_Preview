@@ -537,11 +537,12 @@ def main():
 
             dlg.exec()
             # Also notify running background instance to reload its config
-            try:
-                from src.core.thumbnail_server import notify_running_instance_to_show_settings
-                notify_running_instance_to_show_settings()
-            except Exception:
-                pass
+            if IS_WINDOWS:
+                try:
+                    from src.core.thumbnail_server import notify_running_instance_to_show_settings
+                    notify_running_instance_to_show_settings()
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Error opening foreground settings: {e}")
         sys.exit(0)
