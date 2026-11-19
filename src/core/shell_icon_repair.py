@@ -232,6 +232,51 @@ def repair_adobe_associations():
     ps_icon_path = f"{ps_exe},0" if ps_exe else ps_ico
     ai_icon_path = f"{ai_exe},0" if ai_exe else ai_ico
 
+    # Ensure installed Photoshop & Illustrator bridge all legacy ProgIDs in HKCU
+    # This prevents Windows Explorer from losing the 'Open' command or picking a fallback verb as default
+    if ps_exe:
+        cmd_str = f'"{ps_exe}" "%1"'
+        for v in range(15, 35):
+            for prog in [f"Photoshop.Image.{v}", f"Photoshop.PSBFile.{v}"]:
+                try:
+                    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{prog}\\shell\\open\\command") as k:
+                        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, cmd_str)
+                except Exception:
+                    pass
+
+    if ai_exe:
+        cmd_str = f'"{ai_exe}" "%1"'
+        for v in range(15, 35):
+            try:
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\Adobe.Illustrator.{v}\\shell\\open\\command") as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, cmd_str)
+            except Exception:
+                pass
+
+    # Ensure RawViewRefreshThumb never takes default precedence on any extension
+    for ext in [
+        ".psd", ".psb", ".ai", ".eps", ".pdf", ".tif", ".tiff",
+        ".cr2", ".cr3", ".crw", ".nef", ".nrw", ".arw", ".srf", ".sr2",
+        ".raf", ".orf", ".rw2", ".pef", ".ptx", ".3fr", ".fff", ".iiq", ".raw", ".x3f", ".dng"
+    ]:
+        for root in [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]:
+            k = None
+            try:
+                k = winreg.OpenKey(root, f"Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\RawViewRefreshThumb", 0, winreg.KEY_SET_VALUE)
+            except Exception:
+                if root == winreg.HKEY_CURRENT_USER:
+                    try:
+                        k = winreg.CreateKey(root, f"Software\\Classes\\SystemFileAssociations\\{ext}\\shell\\RawViewRefreshThumb")
+                    except Exception:
+                        k = None
+            if k:
+                try:
+                    winreg.SetValueEx(k, "NeverDefault", 0, winreg.REG_SZ, "")
+                    winreg.SetValueEx(k, "Position", 0, winreg.REG_SZ, "Bottom")
+                    winreg.CloseKey(k)
+                except Exception:
+                    pass
+
     # Only set SystemFileAssociations fallback icons if Adobe is NOT installed
     if not ps_exe:
         for ext in [".psd", ".psb"]:

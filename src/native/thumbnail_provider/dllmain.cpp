@@ -277,6 +277,8 @@ STDAPI DllRegisterServer(void) {
         std::wstring sfaMenu = std::wstring(L"Software\\Classes\\SystemFileAssociations\\") + ext + L"\\shell\\RawViewRefreshThumb";
         SetRegistryValue(HKEY_LOCAL_MACHINE, sfaMenu, L"", L"Refresh Thumbnail");
         SetRegistryValue(HKEY_LOCAL_MACHINE, sfaMenu, L"Icon", L"\"" + iconPath + L"\"");
+        SetRegistryValue(HKEY_LOCAL_MACHINE, sfaMenu, L"NeverDefault", L"");
+        SetRegistryValue(HKEY_LOCAL_MACHINE, sfaMenu, L"Position", L"Bottom");
         std::wstring sfaCmd = sfaMenu + L"\\command";
         SetRegistryValue(HKEY_LOCAL_MACHINE, sfaCmd, L"", L"\"" + exePath + L"\" --refresh-thumb \"%1\"");
     }
@@ -285,6 +287,7 @@ STDAPI DllRegisterServer(void) {
     std::wstring dirBgMenu = L"Software\\Classes\\Directory\\Background\\shell\\RawViewRefreshFolderThumbs";
     SetRegistryValue(HKEY_LOCAL_MACHINE, dirBgMenu, L"", L"Refresh Thumbnails");
     SetRegistryValue(HKEY_LOCAL_MACHINE, dirBgMenu, L"Icon", L"\"" + iconPath + L"\"");
+    SetRegistryValue(HKEY_LOCAL_MACHINE, dirBgMenu, L"NeverDefault", L"");
     std::wstring dirBgCmd = dirBgMenu + L"\\command";
     SetRegistryValue(HKEY_LOCAL_MACHINE, dirBgCmd, L"", L"\"" + exePath + L"\" --refresh-folder \"%V\"");
 
@@ -292,6 +295,7 @@ STDAPI DllRegisterServer(void) {
     std::wstring dirMenu = L"Software\\Classes\\Directory\\shell\\RawViewRefreshFolderThumbs";
     SetRegistryValue(HKEY_LOCAL_MACHINE, dirMenu, L"", L"Refresh Thumbnails");
     SetRegistryValue(HKEY_LOCAL_MACHINE, dirMenu, L"Icon", L"\"" + iconPath + L"\"");
+    SetRegistryValue(HKEY_LOCAL_MACHINE, dirMenu, L"NeverDefault", L"");
     std::wstring dirCmd = dirMenu + L"\\command";
     SetRegistryValue(HKEY_LOCAL_MACHINE, dirCmd, L"", L"\"" + exePath + L"\" --refresh-folder \"%1\"");
 

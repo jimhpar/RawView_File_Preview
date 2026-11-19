@@ -77,21 +77,27 @@ Root: HKCU; Subkey: "Software\Classes\CLSID\{{78FDF5BA-0E57-4B06-8230-1340EE5EA8
 ; Windows Explorer Context Menu: Refresh Thumbnails on Directory Background
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueData: "Refresh Thumbnails"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\assets\app_icon.ico"""; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueName: "NeverDefault"; ValueData: ""; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewRefreshFolderThumbs\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" --refresh-folder ""%V"""; Flags: uninsdeletekey
 
 ; Windows Explorer Context Menu: Refresh Thumbnails on Directory Item
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueData: "Refresh Thumbnails"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\assets\app_icon.ico"""; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewRefreshFolderThumbs"; ValueType: string; ValueName: "NeverDefault"; ValueData: ""; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewRefreshFolderThumbs\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" --refresh-folder ""%1"""; Flags: uninsdeletekey
 
 ; Windows Explorer Context Menu: RawView Settings on Directory Background
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewSettings"; ValueType: string; ValueData: "RawView Settings"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewSettings"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\assets\app_icon.ico"""; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewSettings"; ValueType: string; ValueName: "NeverDefault"; ValueData: ""; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewSettings"; ValueType: string; ValueName: "Position"; ValueData: "Bottom"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shell\RawViewSettings\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" --settings"; Flags: uninsdeletekey
 
 ; Windows Explorer Context Menu: RawView Settings on Directory Item
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewSettings"; ValueType: string; ValueData: "RawView Settings"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewSettings"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\assets\app_icon.ico"""; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewSettings"; ValueType: string; ValueName: "NeverDefault"; ValueData: ""; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewSettings"; ValueType: string; ValueName: "Position"; ValueData: "Bottom"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\Classes\Directory\shell\RawViewSettings\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" --settings"; Flags: uninsdeletekey
 
 [Run]
