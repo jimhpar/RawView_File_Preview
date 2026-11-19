@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 APP_NAME = "RawView"
-APP_VERSION = "v4.2.5"
+APP_VERSION = "v5.3.1"
 APP_PUBLISHER = "BlackBox THC"
-APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v4.2.5"
+APP_MUTEX_NAME = "RawView_SingleInstance_Mutex_v5.3.1"
 GITHUB_REPO = "jimhpar/RawView_File_Preview"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -103,9 +103,20 @@ SUPPORTED_EXTENSIONS = {
     ".x3f": "Sigma RAW"
 }
 
-# Payment & Support Information
+# Online Licensing & BlackBox THC Platform Configuration
+# (Update api_base_url / signup_url if your website endpoints change)
+ONLINE_LICENSE_CONFIG = {
+    "api_base_url": "https://www.blackboxthc.com/api/rawview",
+    "buy_url": "https://www.blackboxthc.com/checkout?slug=rawview&type=subscription&plan=starter",
+    "signup_url": "https://www.blackboxthc.com/signup",
+    "support_phone": "01756678087",
+    "verify_interval_hours": 6,
+    "offline_grace_hours": 72,
+}
+
+# Payment & Support Information (Legacy metadata kept for reference)
 PAYMENT_INFO = {
-    "price_bdt": "50 TK",
+    "price_bdt": "120 TK",
     "bkash_number": "01756678087",
     "bkash_type": "Personal (Send Money)",
     "whatsapp_number": "+1 (202) 780-6050",
@@ -160,14 +171,66 @@ def save_config(config: dict):
     except Exception as e:
         print(f"Failed to save config: {e}")
 
+def get_ssl_context():
+    """Returns a reliable SSLContext using certifi CA bundle (fixes PyInstaller CERTIFICATE_VERIFY_FAILED)."""
+    import ssl
+    try:
+        import certifi
+        ca_path = certifi.where()
+        if ca_path and os.path.exists(ca_path):
+            return ssl.create_default_context(cafile=ca_path)
+    except Exception:
+        pass
+    try:
+        return ssl.create_default_context()
+    except Exception:
+        return None
+
+def notify_shell_refresh():
+    """Broadcasts SHChangeNotify(SHCNE_ASSOCCHANGED) so Windows Explorer refreshes thumbnails/icons."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        if hasattr(ctypes, "windll") and hasattr(ctypes.windll, "shell32"):
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+    except Exception:
+        pass
+
+def set_license_active_registry(active: bool):
+    """Writes HKCU\\Software\\RawView\\LicenseActive (1/0) so the C++ Thumbnail DLL enforces licensing."""
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\RawView") as key:
+            winreg.SetValueEx(key, "LicenseActive", 0, winreg.REG_DWORD, 1 if active else 0)
+    except Exception:
+        pass
+
+def set_user_exited_registry(exited: bool):
+    """Writes HKCU\\Software\\RawView\\UserExited (1/0) so the C++ DLL never respawns RawView after manual Exit."""
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\RawView") as key:
+            winreg.SetValueEx(key, "UserExited", 0, winreg.REG_DWORD, 1 if exited else 0)
+    except Exception:
+        pass
+
 def purge_thumbs_cache():
-    """Purges the thumbnail disk cache to force Windows Explorer and RawView to regenerate thumbnails."""
+    """Purges thumbnail disk caches (both LocalAppData and AppData) to force Explorer to regenerate/clear thumbnails."""
     try:
         import shutil
-        thumbs_dir = CACHE_DIR / "thumbs"
-        if thumbs_dir.exists():
-            shutil.rmtree(thumbs_dir, ignore_errors=True)
-            thumbs_dir.mkdir(parents=True, exist_ok=True)
+        dirs_to_purge = [CACHE_DIR / "thumbs"]
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            dirs_to_purge.append(Path(local_app_data) / "RawView" / "cache" / "thumbs")
+        for thumbs_dir in dirs_to_purge:
+            if thumbs_dir.exists():
+                shutil.rmtree(thumbs_dir, ignore_errors=True)
+                thumbs_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
 

@@ -186,6 +186,12 @@ class RawViewApp(QObject):
         self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(4)
 
+        # 0. Sync license registry state & mark daemon active (not manually exited)
+        from src.core.config import set_user_exited_registry, ONLINE_LICENSE_CONFIG
+        from src.core.licensing import get_license_status
+        set_user_exited_registry(False)
+        get_license_status(sync_registry=True)
+
         # 1. Floating Preview HUD
         self.preview_hud = FloatingPreviewHUD(self.config)
 
@@ -234,6 +240,18 @@ class RawViewApp(QObject):
 
         # 6. Deferred Weekly Background Update Check (10s after startup)
         QTimer.singleShot(10000, self._check_updates_if_due)
+
+        # 6b. Online License Verification (4s after startup + periodic every N hours)
+        # Detects remote device logout from blackboxthc.com or another PC
+        QTimer.singleShot(4000, self._verify_online_license_async)
+        verify_ms = int(ONLINE_LICENSE_CONFIG.get("verify_interval_hours", 6) * 3600 * 1000)
+        self._license_verify_timer = QTimer(self)
+        self._license_verify_timer.setInterval(verify_ms)
+        self._license_verify_timer.timeout.connect(self._verify_online_license_async)
+        self._license_verify_timer.start()
+
+        # 6c. One-time 'Read Carefully' Migration Notice for Legacy Offline License Users
+        QTimer.singleShot(3000, self._check_legacy_migration_notice)
 
         # 7. Asynchronous Shell Icon Self-Repair (runs 2s after startup in daemon thread)
         # Guarantees HKCU shadow keys and Adobe DefaultIcon associations are always healthy on every user machine.
@@ -314,8 +332,10 @@ class RawViewApp(QObject):
         self.hover_monitor.update_config(self.config)
         self.preview_hud.config = self.config
         
-        # Sync tray menu checkbox
+        # Sync tray menu checkbox (signals blocked to prevent recursive double-toggle)
+        self.tray_manager.toggle_action.blockSignals(True)
         self.tray_manager.toggle_action.setChecked(new_state)
+        self.tray_manager.toggle_action.blockSignals(False)
         
         # Dismiss any active preview when disabling
         if not new_state:
@@ -389,7 +409,47 @@ class RawViewApp(QObject):
         self.tray_manager.config = self.config
         self.tray_manager.show_settings()
 
+    def _verify_online_license_async(self):
+        """Verifies the online session in a background thread; signs out locally if revoked remotely."""
+        import threading
+
+        def _worker():
+            try:
+                from src.core.licensing import verify_online_session
+                res = verify_online_session()
+                if res.get("revoked"):
+                    QTimer.singleShot(0, lambda: self._on_license_revoked(res.get("message", "")))
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_license_revoked(self, message: str):
+        self.preview_hud.dismiss()
+        StatusToastHUD.show_message("RawView signed out from this device", is_success=False, badge="License")
+
+    def _check_legacy_migration_notice(self):
+        """Shows the 'Read Carefully' dialog once per app session for legacy offline-license users."""
+        try:
+            from src.core.licensing import get_license_status
+            lic = get_license_status(sync_registry=False)
+            if not lic.get("needs_migration"):
+                return
+            from src.ui.license_dialogs import LegacyMigrationDialog
+            self._legacy_dlg = LegacyMigrationDialog()
+            self._legacy_dlg.show()
+            self._legacy_dlg.raise_()
+            self._legacy_dlg.activateWindow()
+        except Exception as e:
+            print(f"[RawView] Legacy migration notice error: {e}")
+
     def shutdown(self):
+        # Mark explicit user exit so the Explorer thumbnail DLL never auto-respawns RawView
+        try:
+            from src.core.config import set_user_exited_registry
+            set_user_exited_registry(True)
+        except Exception:
+            pass
         if getattr(self, "hotkey_registered", False) and user32:
             try:
                 user32.UnregisterHotKey(None, self.hotkey_id)

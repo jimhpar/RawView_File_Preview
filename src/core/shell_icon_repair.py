@@ -189,13 +189,6 @@ def clean_user_shadow_keys():
         path = f"Software\\Classes\\{pid}"
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_READ) as k:
-                has_icon = False
-                try:
-                    with winreg.OpenKey(k, "DefaultIcon"):
-                        has_icon = True
-                except Exception:
-                    pass
-
                 has_cmd = False
                 try:
                     with winreg.OpenKey(k, r"shell\open\command"):
@@ -203,7 +196,9 @@ def clean_user_shadow_keys():
                 except Exception:
                     pass
 
-            if not has_icon and not has_cmd:
+            # Remove partial HKCU Adobe ProgID shadow keys (without shell\open\command)
+            # so Windows always resolves the genuine HKLM Adobe open command on double-click!
+            if not has_cmd:
                 def _del_tree(root, subkey):
                     try:
                         with winreg.OpenKey(root, subkey, 0, winreg.KEY_ALL_ACCESS) as key:
@@ -220,12 +215,11 @@ def clean_user_shadow_keys():
 
 def repair_adobe_associations():
     """
-    Ensures that .psd, .psb, .ai, .eps have valid DefaultIcon associations in Windows Registry.
-    If Adobe software is installed, points directly to Photoshop/Illustrator icons.
-    If Adobe is NOT installed, registers RawView's built-in authentic Ps and Ai badge icons
-    so Windows never shows a blank white document icon!
+    Ensures .psd, .psb, .ai, .eps have valid fallback DefaultIcon associations on machines
+    WITHOUT Adobe installed, while NEVER shadowing genuine HKLM Adobe ProgIDs on machines
+    where Photoshop or Illustrator is installed (preserving double-click file opening).
     """
-    if not IS_WINDOWS:
+    if not IS_WINDOWS or not winreg:
         return
 
     assets_dir = get_assets_dir()
@@ -238,56 +232,22 @@ def repair_adobe_associations():
     ps_icon_path = f"{ps_exe},0" if ps_exe else ps_ico
     ai_icon_path = f"{ai_exe},0" if ai_exe else ai_ico
 
-    # 1. Repair Photoshop ProgIDs & .psd / .psb
-    ps_progids = [f"Photoshop.Image.{v}" for v in range(15, 35)] + ["Photoshop.Image", "Photoshop.PSD"]
-    for pid in ps_progids:
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{pid}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
-        except Exception:
-            pass
+    # Only set SystemFileAssociations fallback icons if Adobe is NOT installed
+    if not ps_exe:
+        for ext in [".psd", ".psb"]:
+            try:
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\SystemFileAssociations\\{ext}\\DefaultIcon") as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_ico)
+            except Exception:
+                pass
 
-    psb_progids = [f"Photoshop.PSBFile.{v}" for v in range(15, 35)] + ["Photoshop.PSBFile"]
-    for pid in psb_progids:
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{pid}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
-        except Exception:
-            pass
-
-    # Ensure .psd / .psb have valid DefaultIcons in HKCU
-    for ext in [".psd", ".psb"]:
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{ext}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
-        except Exception:
-            pass
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\SystemFileAssociations\\{ext}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ps_icon_path)
-        except Exception:
-            pass
-
-    # 2. Repair Illustrator ProgIDs & .ai / .eps
-    ai_progids = [f"Adobe.Illustrator.{v}" for v in range(15, 35)] + ["Adobe.Illustrator", "Adobe.Illustrator.EPS", "Illustrator.AI", "Illustrator.EPS"]
-    for pid in ai_progids:
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{pid}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
-        except Exception:
-            pass
-
-    for ext in [".ai", ".eps"]:
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{ext}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
-        except Exception:
-            pass
-        try:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\SystemFileAssociations\\{ext}\\DefaultIcon") as k:
-                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_icon_path)
-        except Exception:
-            pass
+    if not ai_exe:
+        for ext in [".ai", ".eps"]:
+            try:
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\SystemFileAssociations\\{ext}\\DefaultIcon") as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ai_ico)
+            except Exception:
+                pass
 
     # 2b. Register system fallback ProgIDs for machines without Adobe
     fallback_entries = [

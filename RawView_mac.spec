@@ -26,7 +26,7 @@ hiddenimports = [
     'src.core.bijoy_converter',
     'src.core.updater',
     'src.ui.update_dialog',
-    'src.core.badge_engine'
+    'src.core.badge_engine', 'certifi', 'src.ui.license_dialogs'
 ]
 
 # Collect essential non-Qt packages (PyQt6 is handled by PyInstaller hooks to avoid framework duplication)

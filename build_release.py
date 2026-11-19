@@ -243,6 +243,9 @@ def build(cert_path: str = "", cert_pass: str = "", skip_pyinstaller: bool = Fal
             "--hidden-import=winerror",
             "--hidden-import=src.core.shell_icon_repair",
             "--hidden-import=src.core.badge_engine",
+            "--hidden-import=certifi",
+            "--collect-data=certifi",
+            "--hidden-import=src.ui.license_dialogs",
             str(BASE_DIR / "src" / "app.py")
         ]
 

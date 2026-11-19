@@ -453,15 +453,18 @@ class ExplorerHoverMonitor(QObject):
             elif not esc_state:
                 self.esc_key_down = False
 
-        # Ctrl+` global hotkey: toggle hover preview ON/OFF (works system-wide, always)
-        # VK_CONTROL = 0x11, VK_OEM_3 = 0xC0 (backtick/grave accent key)
-        ctrl_state = bool(win32api.GetAsyncKeyState(0x11) & 0x8000)
-        backtick_state = bool(win32api.GetAsyncKeyState(0xC0) & 0x8000)
-        if ctrl_state and backtick_state and not self.ctrl_backtick_down:
-            self.ctrl_backtick_down = True
-            self.toggle_enabled_requested.emit()
-        elif not (ctrl_state and backtick_state):
-            self.ctrl_backtick_down = False
+            # Mouse click detection: immediately dismiss unpinned hover preview so Explorer double-clicks
+            # always launch the file's designated application (Photoshop, Illustrator, Acrobat, etc.) cleanly!
+            if not self.preview_is_pinned:
+                lbtn_down = bool(win32api.GetAsyncKeyState(0x01) & 0x8000)
+                rbtn_down = bool(win32api.GetAsyncKeyState(0x02) & 0x8000)
+                if lbtn_down or rbtn_down:
+                    self._clear_hover()
+                    self.settle_start_time = int(time.monotonic() * 1000)
+                    return
+
+        # Note: Ctrl+` global hotkey is handled exclusively by Win32 RegisterHotKey (WM_HOTKEY) in app.py
+        # to prevent duplicate triggers and keyboard/application conflicts.
 
         if not self.enabled:
             if self.is_hover_active:

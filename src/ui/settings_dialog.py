@@ -15,11 +15,15 @@ from PyQt6.QtGui import (
     QIcon, QColor, QPalette, QDesktopServices, QPainter, QBrush, QPen
 )
 from src.core.config import (
-    save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION, PAYMENT_INFO,
+    save_config, SUPPORTED_EXTENSIONS, CACHE_DIR, APP_NAME, APP_VERSION,
+    ONLINE_LICENSE_CONFIG,
     get_show_system_icon_overlay, set_show_system_icon_overlay, purge_thumbs_cache
 )
 from src.core.autostart import set_autostart, is_autostart_enabled
-from src.core.licensing import get_license_status, activate_license, get_machine_id
+from src.core.licensing import (
+    get_license_status, sign_out_current_device, LEGACY_MIGRATION_MESSAGE
+)
+from src.ui.license_dialogs import SignInDialog, DeviceManagementDialog
 
 def get_show_type_overlay() -> bool:
     return get_show_system_icon_overlay()
@@ -330,13 +334,11 @@ class SettingsDialog(QDialog):
         main_layout.setContentsMargins(4, 6, 12, 6)
         main_layout.setSpacing(12)
 
-        # 1. Pro License & Activation Section
-        lic_group = QGroupBox("RawView Pro License (50 TK Lifetime)", self)
+        # 1. Pro License & Account Section (Online BlackBox THC Licensing)
+        lic_group = QGroupBox("RawView Pro License", self)
         lic_layout = QVBoxLayout(lic_group)
         lic_layout.setContentsMargins(14, 12, 14, 12)
-        lic_layout.setSpacing(8)
-
-        lic_info = get_license_status()
+        lic_layout.setSpacing(10)
 
         # Status Header Row
         status_row = QHBoxLayout()
@@ -350,72 +352,125 @@ class SettingsDialog(QDialog):
         status_row.addStretch()
         lic_layout.addLayout(status_row)
 
-        # Machine ID Row
-        mid_row = QHBoxLayout()
-        mid_label = QLabel("1. Machine Code:")
-        mid_label.setStyleSheet("font-weight: 600;")
-        self.mid_val = QLineEdit(lic_info.get("machine_id", get_machine_id()))
-        self.mid_val.setReadOnly(True)
-        self.mid_val.setStyleSheet("color: #38BDF8; font-weight: bold; font-family: monospace;")
-        copy_mid_btn = QPushButton("📋 Copy Code")
-        copy_mid_btn.clicked.connect(self._copy_machine_id)
-        mid_row.addWidget(mid_label)
-        mid_row.addWidget(self.mid_val, stretch=1)
-        mid_row.addWidget(copy_mid_btn)
-        lic_layout.addLayout(mid_row)
+        # Signed-in Account Info Row (visible only when ONLINE_PRO_ACTIVE)
+        self.account_info_lbl = QLabel(self)
+        self.account_info_lbl.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        self.account_info_lbl.setWordWrap(True)
+        lic_layout.addWidget(self.account_info_lbl)
 
-        # bKash Payment Row
-        self.bkash_row_widget = QWidget()
-        bkash_row = QHBoxLayout(self.bkash_row_widget)
-        bkash_row.setContentsMargins(0, 0, 0, 0)
-        bkash_label = QLabel("2. bKash Personal (50 TK):")
-        bkash_label.setStyleSheet("color: #FB7185; font-weight: 700;")
-        self.bkash_val = QLineEdit(PAYMENT_INFO.get("bkash_number", "01756678087"))
-        self.bkash_val.setReadOnly(True)
-        self.bkash_val.setStyleSheet("color: #FFFFFF; font-weight: bold; font-family: monospace; border: 1px solid #E11D48;")
-        copy_bkash_btn = QPushButton("📋 Copy bKash")
-        copy_bkash_btn.setObjectName("copyBkashBtn")
-        copy_bkash_btn.clicked.connect(self._copy_bkash)
-        bkash_row.addWidget(bkash_label)
-        bkash_row.addWidget(self.bkash_val, stretch=1)
-        bkash_row.addWidget(copy_bkash_btn)
-        lic_layout.addWidget(self.bkash_row_widget)
+        # Legacy Offline Migration Banner ('Read Carefully' — visible only when LEGACY_OFFLINE_PRO)
+        self.legacy_banner = QFrame(self)
+        self.legacy_banner.setStyleSheet("""
+            QFrame {
+                background-color: #1C1917;
+                border: 1px solid #B45309;
+                border-radius: 8px;
+            }
+        """)
+        legacy_layout = QVBoxLayout(self.legacy_banner)
+        legacy_layout.setContentsMargins(12, 10, 12, 10)
+        legacy_layout.setSpacing(6)
+        legacy_title = QLabel("📢 Read Carefully", self.legacy_banner)
+        legacy_title.setStyleSheet("color: #FBBF24; font-weight: 700; font-size: 12px; border: none;")
+        legacy_msg = QLabel(LEGACY_MIGRATION_MESSAGE, self.legacy_banner)
+        legacy_msg.setWordWrap(True)
+        legacy_msg.setStyleSheet("color: #FDE68A; font-size: 11px; border: none;")
+        legacy_layout.addWidget(legacy_title)
+        legacy_layout.addWidget(legacy_msg)
+        lic_layout.addWidget(self.legacy_banner)
 
-        # WhatsApp Support Row
-        self.wa_row_widget = QWidget()
-        wa_row = QHBoxLayout(self.wa_row_widget)
-        wa_row.setContentsMargins(0, 0, 0, 0)
-        wa_label = QLabel("3. WhatsApp Support:")
-        wa_label.setStyleSheet("color: #34D399; font-weight: 700;")
-        self.wa_val = QLineEdit(PAYMENT_INFO.get("whatsapp_number", "+1 (202) 780-6050"))
-        self.wa_val.setReadOnly(True)
-        self.wa_val.setStyleSheet("color: #FFFFFF; font-weight: 600; border: 1px solid #10B981;")
-        wa_btn = QPushButton("💬 Open WhatsApp")
-        wa_btn.setObjectName("waBtn")
-        wa_btn.clicked.connect(self._open_whatsapp)
-        wa_row.addWidget(wa_label)
-        wa_row.addWidget(self.wa_val, stretch=1)
-        wa_row.addWidget(wa_btn)
-        lic_layout.addWidget(self.wa_row_widget)
+        # License Action Buttons Row
+        lic_btn_row = QHBoxLayout()
+        lic_btn_row.setSpacing(10)
 
-        # License Key Input Row (Active if not Pro)
-        self.key_input_layout = QHBoxLayout()
-        self.key_input = QLineEdit()
-        self.key_input.setPlaceholderText("4. Enter License Key (e.g. RVPRO-XXXX-XXXX-XXXX)...")
-        self.activate_btn = QPushButton("⚡ Activate Pro")
-        self.activate_btn.setObjectName("activateBtn")
-        self.activate_btn.clicked.connect(self._do_activate_license)
-        self.key_input_layout.addWidget(self.key_input, stretch=1)
-        self.key_input_layout.addWidget(self.activate_btn)
-        lic_layout.addLayout(self.key_input_layout)
+        self.buy_now_btn = QPushButton("Buy Now", self)
+        self.buy_now_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #10B981;
+                border: 1px solid #059669;
+                color: #FFFFFF;
+                padding: 7px 16px;
+                border-radius: 6px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+        """)
+        self.buy_now_btn.clicked.connect(self._open_buy_now)
+        lic_btn_row.addWidget(self.buy_now_btn)
 
-        # Payment / Purchase instructions note
-        self.pay_note = QLabel(
-            "Send 50 TK via bKash Personal (Ref: Machine Code), send TrxID on WhatsApp to get your License Key."
-        )
-        self.pay_note.setStyleSheet("color: #94A3B8; font-size: 11px;")
-        self.pay_note.setWordWrap(True)
-        lic_layout.addWidget(self.pay_note)
+        self.update_lic_btn = QPushButton("Update License", self)
+        self.update_lic_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #D97706;
+                border: 1px solid #B45309;
+                color: #FFFFFF;
+                padding: 7px 16px;
+                border-radius: 6px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #B45309;
+            }
+        """)
+        self.update_lic_btn.clicked.connect(self._open_update_license)
+        lic_btn_row.addWidget(self.update_lic_btn)
+
+        self.sign_in_btn = QPushButton("Sign In", self)
+        self.sign_in_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0284C7;
+                border: 1px solid #0369A1;
+                color: #FFFFFF;
+                padding: 7px 16px;
+                border-radius: 6px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #0369A1;
+            }
+        """)
+        self.sign_in_btn.clicked.connect(self._open_sign_in)
+        lic_btn_row.addWidget(self.sign_in_btn)
+
+        self.manage_devices_btn = QPushButton("💻 Device Management", self)
+        self.manage_devices_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                border: 1px solid #334155;
+                color: #38BDF8;
+                padding: 7px 14px;
+                border-radius: 6px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                border-color: #38BDF8;
+            }
+        """)
+        self.manage_devices_btn.clicked.connect(self._open_device_management)
+        lic_btn_row.addWidget(self.manage_devices_btn)
+
+        self.sign_out_btn = QPushButton("Sign Out", self)
+        self.sign_out_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #7F1D1D;
+                border: 1px solid #B91C1C;
+                color: #FEE2E2;
+                padding: 7px 14px;
+                border-radius: 6px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #991B1B;
+            }
+        """)
+        self.sign_out_btn.clicked.connect(self._do_sign_out)
+        lic_btn_row.addWidget(self.sign_out_btn)
+
+        lic_btn_row.addStretch()
+        lic_layout.addLayout(lic_btn_row)
 
         self._refresh_license_ui()
         main_layout.addWidget(lic_group)
@@ -893,59 +948,88 @@ class SettingsDialog(QDialog):
         lic_info = get_license_status()
         status = lic_info.get("status")
 
-        if status == "PRO_ACTIVE":
-            self.status_badge.setText("✨ LIFETIME PRO ACTIVATED")
+        if status == "ONLINE_PRO_ACTIVE":
+            email = lic_info.get("user_email") or "BlackBox THC Account"
+            plan = lic_info.get("plan") or "RawView Pro"
+            limit = lic_info.get("device_limit", 1)
+            active_count = max(1, len(lic_info.get("devices") or []))
+
+            self.status_badge.setText("✨ PRO ACTIVATED")
             self.status_badge.setStyleSheet("background-color: #064E3B; color: #34D399; border: 1px solid #10B981; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
-            self.key_input.setVisible(False)
-            self.activate_btn.setVisible(False)
-            self.bkash_row_widget.setVisible(False)
-            self.wa_row_widget.setVisible(False)
-            self.pay_note.setText("Your copy of RawView is fully activated with Lifetime Pro access. Thank you!")
-            self.pay_note.setStyleSheet("color: #34D399; font-size: 11px; font-weight: 600;")
+            self.account_info_lbl.setText(f"Signed in as <b>{email}</b> &nbsp;•&nbsp; Plan: {plan} &nbsp;•&nbsp; Devices: {active_count} / {limit}")
+            self.account_info_lbl.setVisible(True)
+            self.legacy_banner.setVisible(False)
+            self.buy_now_btn.setVisible(False)
+            self.update_lic_btn.setVisible(False)
+            self.sign_in_btn.setVisible(False)
+            self.manage_devices_btn.setVisible(True)
+            self.sign_out_btn.setVisible(True)
+
+        elif status == "LEGACY_OFFLINE_PRO":
+            self.status_badge.setText("✨ LEGACY PRO ACTIVE (MIGRATION AVAILABLE)")
+            self.status_badge.setStyleSheet("background-color: #451A03; color: #FBBF24; border: 1px solid #D97706; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
+            self.account_info_lbl.setText("Your legacy offline license remains active until you sign in with your BlackBox THC account.")
+            self.account_info_lbl.setVisible(True)
+            self.legacy_banner.setVisible(True)
+            self.buy_now_btn.setVisible(False)
+            self.update_lic_btn.setVisible(True)
+            self.sign_in_btn.setVisible(True)
+            self.manage_devices_btn.setVisible(False)
+            self.sign_out_btn.setVisible(False)
+
         elif status == "TRIAL_ACTIVE":
             days = lic_info.get("days_left", 7)
             self.status_badge.setText(f"⏳ 7-DAY FREE TRIAL ({days} DAYS LEFT)")
             self.status_badge.setStyleSheet("background-color: #0C4A6E; color: #38BDF8; border: 1px solid #0284C7; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
-            self.key_input.setVisible(True)
-            self.activate_btn.setVisible(True)
-            self.bkash_row_widget.setVisible(True)
-            self.wa_row_widget.setVisible(True)
+            self.account_info_lbl.setVisible(False)
+            self.legacy_banner.setVisible(False)
+            self.buy_now_btn.setVisible(True)
+            self.update_lic_btn.setVisible(False)
+            self.sign_in_btn.setVisible(True)
+            self.manage_devices_btn.setVisible(False)
+            self.sign_out_btn.setVisible(False)
+
         else:
-            self.status_badge.setText("🔒 TRIAL EXPIRED (ACTIVATION REQUIRED)")
+            self.status_badge.setText("🔒 TRIAL EXPIRED (SIGN IN REQUIRED)")
             self.status_badge.setStyleSheet("background-color: #4C0519; color: #FB7185; border: 1px solid #E11D48; padding: 3px 8px; border-radius: 4px; font-weight: 700;")
-            self.key_input.setVisible(True)
-            self.activate_btn.setVisible(True)
-            self.bkash_row_widget.setVisible(True)
-            self.wa_row_widget.setVisible(True)
+            self.account_info_lbl.setText("Your 7-day free trial has ended. Purchase a license or sign in with your BlackBox THC account to continue.")
+            self.account_info_lbl.setVisible(True)
+            self.legacy_banner.setVisible(False)
+            self.buy_now_btn.setVisible(True)
+            self.update_lic_btn.setVisible(False)
+            self.sign_in_btn.setVisible(True)
+            self.manage_devices_btn.setVisible(False)
+            self.sign_out_btn.setVisible(False)
 
-    def _copy_machine_id(self):
-        mid = self.mid_val.text()
-        QApplication.clipboard().setText(mid)
-        QMessageBox.information(self, "Copied", f"Machine Code '{mid}' copied to clipboard!\nSend this code to WhatsApp (+1 202 780-6050) after sending 50 TK.")
+    def _open_buy_now(self):
+        QDesktopServices.openUrl(QUrl(ONLINE_LICENSE_CONFIG["buy_url"]))
 
-    def _copy_bkash(self):
-        num = self.bkash_val.text()
-        QApplication.clipboard().setText(num)
-        QMessageBox.information(self, "Copied", f"bKash Personal Number '{num}' copied to clipboard!\nSend 50 TK (Send Money) with your Machine Code as Reference.")
+    def _open_update_license(self):
+        QDesktopServices.openUrl(QUrl(ONLINE_LICENSE_CONFIG["signup_url"]))
 
-    def _open_whatsapp(self):
-        mid = self.mid_val.text()
-        msg = f"Hello! I sent 50 TK for RawView Lifetime Pro.\nMy Machine Code: {mid}"
-        url_str = f"https://wa.me/12027806050?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
-        QDesktopServices.openUrl(QUrl(url_str))
-
-    def _do_activate_license(self):
-        key = self.key_input.text().strip()
-        if not key:
-            QMessageBox.warning(self, "Input Required", "Please enter the Pro License Key sent by the seller.")
-            return
-
-        success, msg = activate_license(key)
-        if success:
-            QMessageBox.information(self, "Congratulations!", msg)
+    def _open_sign_in(self):
+        dlg = SignInDialog(parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.signed_in_ok:
+            QMessageBox.information(self, "Signed In", "Your BlackBox THC RawView license is now active on this device!")
             self._refresh_license_ui()
-        else:
-            QMessageBox.warning(self, "Activation Failed", msg)
+
+    def _open_device_management(self):
+        dlg = DeviceManagementDialog(parent=self)
+        dlg.exec()
+        self._refresh_license_ui()
+
+    def _do_sign_out(self):
+        reply = QMessageBox.question(
+            self,
+            "Sign Out",
+            "Sign out RawView on this device?\nThumbnails and hover previews will be disabled until you sign in again.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            sign_out_current_device()
+            self._refresh_license_ui()
+            QMessageBox.information(self, "Signed Out", "This device has been signed out successfully.")
 
     def _get_cache_size_mb(self) -> float:
         total = 0

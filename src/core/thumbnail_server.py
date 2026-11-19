@@ -48,8 +48,17 @@ def get_thumb_cache_path(file_path: str, cx: int) -> Path:
     return thumbs_dir / f"thumb_{h:x}_{mtime:x}_{cx}_m{m_val}.bmp"
 
 def render_thumbnail(file_path: str, cx: int) -> QImage | None:
-    """Decodes and scales file thumbnail to requested dimension cx."""
+    """Decodes and scales file thumbnail to requested dimension cx (only when license/trial is active)."""
     if not os.path.exists(file_path):
+        return None
+
+    # Enforce active license or 7-day trial before generating any Explorer thumbnail
+    try:
+        from src.core.licensing import get_license_status
+        lic = get_license_status()
+        if not lic.get("is_unlocked", False):
+            return None
+    except Exception:
         return None
 
     try:

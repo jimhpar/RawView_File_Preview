@@ -1,8 +1,8 @@
-; Inno Setup Script for RawView v4.2.5
+; Inno Setup Script for RawView v5.3.1
 ; Installs into C:\Program Files\RawView with Windows Boot Autostart, Code Signing Trust & Context Menus
 
 #define MyAppName "RawView"
-#define MyAppVersion "4.2.5"
+#define MyAppVersion "5.3.1"
 #define MyAppPublisher "BlackBox THC"
 #define MyAppURL "https://github.com/jimhpar/RawView_File_Preview"
 #define MyAppExeName "RawView.exe"
@@ -142,6 +142,23 @@ end;
 function NeedRestart(): Boolean;
 begin
   Result := False;
+end;
+
+// Full cleanup after uninstall: RawView thumb caches, license gate registry, Windows thumbcache
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\RawView');
+    DelTree(ExpandConstant('{localappdata}\RawView\cache\thumbs'), True, True, True);
+    DelTree(ExpandConstant('{userappdata}\RawView\cache\thumbs'), True, True, True);
+    Exec('taskkill.exe', '/F /IM explorer.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(800);
+    Exec('cmd.exe', '/C del /F /Q "%LOCALAPPDATA%\Microsoft\Windows\Explorer\thumbcache_*.db"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "Start-Process explorer.exe"', '', SW_HIDE, ewNoWait, ResultCode);
+  end;
 end;
 
 // Lifecycle handler for installation steps

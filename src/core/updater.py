@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from .config import APP_VERSION, GITHUB_RELEASES_API
+from .config import APP_VERSION, GITHUB_RELEASES_API, get_ssl_context
 
 def parse_version_tuple(version_str: str) -> tuple[int, ...]:
     """
@@ -40,7 +40,8 @@ def check_for_updates_sync(timeout: float = 6.0) -> dict:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        ssl_ctx = get_ssl_context()
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             if resp.status != 200:
                 return {
                     "has_update": False,
@@ -147,7 +148,8 @@ class UpdateDownloadWorker(QThread):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=15.0) as resp:
+            ssl_ctx = get_ssl_context()
+            with urllib.request.urlopen(req, timeout=15.0, context=ssl_ctx) as resp:
                 total_bytes = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
                 chunk_size = 64 * 1024 # 64 KB

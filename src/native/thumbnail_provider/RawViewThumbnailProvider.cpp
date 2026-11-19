@@ -319,7 +319,58 @@ bool CRawViewThumbnailProvider::FetchFromPipe(UINT cx, HBITMAP *phbmp, WTS_ALPHA
     return true;
 }
 
+static bool LocateRawViewExe(wchar_t* outExePath, size_t maxChars) {
+    wchar_t dllPath[MAX_PATH];
+    if (GetModuleFileNameW(g_hInst, dllPath, MAX_PATH)) {
+        PathRemoveFileSpecW(dllPath);
+        swprintf_s(outExePath, maxChars, L"%s\\RawView.exe", dllPath);
+        if (GetFileAttributesW(outExePath) != INVALID_FILE_ATTRIBUTES) {
+            return true;
+        }
+    }
+    swprintf_s(outExePath, maxChars, L"C:\\Program Files\\RawView\\RawView.exe");
+    return (GetFileAttributesW(outExePath) != INVALID_FILE_ATTRIBUTES);
+}
+
+static bool IsUserExited() {
+    DWORD exited = 0;
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\RawView", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD dwSize = sizeof(exited);
+        RegQueryValueExW(hKey, L"UserExited", NULL, NULL, (LPBYTE)&exited, &dwSize);
+        RegCloseKey(hKey);
+    }
+    return (exited != 0);
+}
+
+static bool IsLicenseActiveAndInstalled() {
+    // 1. Verify RawView.exe is still installed on disk (stops immediately if uninstalled)
+    wchar_t exePath[MAX_PATH];
+    if (!LocateRawViewExe(exePath, MAX_PATH)) {
+        return false;
+    }
+
+    // 2. Verify HKCU\Software\RawView\LicenseActive == 1
+    // (If key hasn't been created yet on brand-new install, allow initial trial bootstrap)
+    DWORD licenseActive = 1;
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\RawView", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD dwSize = sizeof(licenseActive);
+        LONG res = RegQueryValueExW(hKey, L"LicenseActive", NULL, NULL, (LPBYTE)&licenseActive, &dwSize);
+        RegCloseKey(hKey);
+        if (res == ERROR_SUCCESS && licenseActive == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void EnsureBackgroundDaemonRunning() {
+    // Never respawn RawView.exe if the user explicitly clicked 'Exit RawView'
+    if (IsUserExited()) {
+        return;
+    }
+
     static ULONGLONG s_lastLaunchTick = 0;
     ULONGLONG now = GetTickCount64();
     if (now - s_lastLaunchTick < 30000) {
@@ -328,29 +379,21 @@ static void EnsureBackgroundDaemonRunning() {
     s_lastLaunchTick = now;
 
     // Check if RawView single instance mutex is active
-    HANDLE hMutex1 = OpenMutexW(SYNCHRONIZE, FALSE, L"RawView_SingleInstance_Mutex_v4.2.5");
+    HANDLE hMutex1 = OpenMutexW(SYNCHRONIZE, FALSE, L"RawView_SingleInstance_Mutex_v5.3.1");
     if (hMutex1) {
         CloseHandle(hMutex1);
         return;
     }
-    HANDLE hMutex2 = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex_v4.2.5");
+    HANDLE hMutex2 = OpenMutexW(SYNCHRONIZE, FALSE, L"Global\\RawView_SingleInstance_Mutex_v5.3.1");
     if (hMutex2) {
         CloseHandle(hMutex2);
         return;
     }
 
     // Locate RawView.exe in same directory as this DLL or standard install dir
-    wchar_t dllPath[MAX_PATH];
-    if (!GetModuleFileNameW(g_hInst, dllPath, MAX_PATH)) return;
-    PathRemoveFileSpecW(dllPath);
-
     wchar_t exePath[MAX_PATH];
-    swprintf_s(exePath, L"%s\\RawView.exe", dllPath);
-    if (GetFileAttributesW(exePath) == INVALID_FILE_ATTRIBUTES) {
-        wcscpy_s(exePath, L"C:\\Program Files\\RawView\\RawView.exe");
-        if (GetFileAttributesW(exePath) == INVALID_FILE_ATTRIBUTES) {
-            return;
-        }
+    if (!LocateRawViewExe(exePath, MAX_PATH)) {
+        return;
     }
 
     wchar_t cmd[MAX_PATH + 64];
@@ -374,6 +417,11 @@ IFACEMETHODIMP CRawViewThumbnailProvider::GetThumbnail(UINT cx, HBITMAP *phbmp, 
 
     if (m_filePath.empty()) return E_FAIL;
 
+    // Enforce license gating & installed state before touching disk cache or pipe
+    if (!IsLicenseActiveAndInstalled()) {
+        return E_FAIL;
+    }
+
     try {
         // Tier 1: Check ultra-fast disk cache (<1ms)
         if (FetchFromDiskCache(cx, phbmp, pdwAlpha)) {
@@ -385,7 +433,7 @@ IFACEMETHODIMP CRawViewThumbnailProvider::GetThumbnail(UINT cx, HBITMAP *phbmp, 
             return S_OK;
         }
 
-        // Gently trigger background service startup if not already running
+        // Gently trigger background service startup if not already running (and not manually exited)
         EnsureBackgroundDaemonRunning();
     }
     catch (...) {
