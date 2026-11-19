@@ -526,3 +526,41 @@ def activate_license(license_key: str) -> tuple[bool, str]:
         set_license_active_registry(True)
         return True, "RawView Pro activated!"
     return False, "Invalid license key."
+
+def initiate_claim_ticket() -> dict:
+    """
+    Requests a single-use 15-minute claim ticket from blackboxthc.com for migrating an offline pro license.
+    Returns:
+    - ok: bool
+    - claim_url: str
+    - ticket: str
+    - message: str
+    """
+    store = _load_license_store()
+    saved_key = store.get("license_key", "")
+    machine_id = get_machine_id()
+
+    if not saved_key or not verify_license_key(machine_id, saved_key):
+        return {"ok": False, "claim_url": "", "message": "No valid offline license found on this PC."}
+
+    payload = {
+        "machine_id": machine_id,
+        "license_key": saved_key,
+        "app_version": APP_VERSION,
+    }
+
+    status_code, data = _api_request("claim/initiate", method="POST", payload=payload, timeout=8.0)
+
+    if status_code == 200 and data.get("claim_url"):
+        return {
+            "ok": True,
+            "claim_url": data["claim_url"],
+            "ticket": data.get("ticket", ""),
+            "message": data.get("message", "Ticket generated."),
+        }
+
+    return {
+        "ok": False,
+        "claim_url": "",
+        "message": data.get("message") or f"Could not generate claim ticket (HTTP {status_code}).",
+    }

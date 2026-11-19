@@ -23,7 +23,7 @@ from src.core.autostart import set_autostart, is_autostart_enabled
 from src.core.licensing import (
     get_license_status, sign_out_current_device, LEGACY_MIGRATION_MESSAGE
 )
-from src.ui.license_dialogs import SignInDialog, DeviceManagementDialog
+from src.ui.license_dialogs import SignInDialog, DeviceManagementDialog, launch_claim_url_with_ticket
 
 def get_show_type_overlay() -> bool:
     return get_show_system_icon_overlay()
@@ -1005,7 +1005,7 @@ class SettingsDialog(QDialog):
         QDesktopServices.openUrl(QUrl(ONLINE_LICENSE_CONFIG["buy_url"]))
 
     def _open_update_license(self):
-        QDesktopServices.openUrl(QUrl(ONLINE_LICENSE_CONFIG["signup_url"]))
+        launch_claim_url_with_ticket(parent_widget=self, btn=self.update_lic_btn)
 
     def _open_sign_in(self):
         dlg = SignInDialog(parent=self)

@@ -15,6 +15,7 @@ from src.core.licensing import (
     fetch_registered_devices,
     logout_remote_device,
     get_machine_id,
+    initiate_claim_ticket,
     LEGACY_MIGRATION_MESSAGE,
 )
 
@@ -615,18 +616,60 @@ class LegacyMigrationDialog(QDialog):
         signin_btn.clicked.connect(self._open_signin)
         btn_row.addWidget(signin_btn)
 
-        update_btn = QPushButton("Update License")
-        update_btn.setObjectName("primaryBtn")
-        update_btn.clicked.connect(self._open_signup)
-        btn_row.addWidget(update_btn)
+        self.update_btn = QPushButton("Update License")
+        self.update_btn.setObjectName("primaryBtn")
+        self.update_btn.clicked.connect(self._open_signup)
+        btn_row.addWidget(self.update_btn)
 
         layout.addLayout(btn_row)
 
     def _open_signup(self):
-        QDesktopServices.openUrl(QUrl(ONLINE_LICENSE_CONFIG["signup_url"]))
+        launch_claim_url_with_ticket(parent_widget=self, btn=self.update_btn)
 
     def _open_signin(self):
         dlg = SignInDialog(parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted and dlg.signed_in_ok:
             self.signed_in_ok = True
             self.accept()
+
+class _ClaimTicketWorker(QThread):
+    finished = pyqtSignal(dict)
+
+    def run(self):
+        try:
+            res = initiate_claim_ticket()
+            self.finished.emit(res)
+        except Exception as e:
+            self.finished.emit({"ok": False, "claim_url": "", "message": str(e)})
+
+def launch_claim_url_with_ticket(parent_widget=None, btn=None):
+    """
+    Requests a single-use 15-minute claim ticket from blackboxthc.com directly from RawView
+    and launches the verified browser claim page.
+    """
+    orig_text = btn.text() if btn else ""
+    if btn:
+        btn.setEnabled(False)
+        btn.setText("Generating Link...")
+
+    def on_res(res: dict):
+        if btn:
+            btn.setEnabled(True)
+            btn.setText(orig_text)
+
+        claim_url = res.get("claim_url", "")
+        if res.get("ok") and claim_url:
+            QDesktopServices.openUrl(QUrl(claim_url))
+        else:
+            msg = res.get("message") or "Could not generate secure claim link."
+            if parent_widget:
+                QMessageBox.warning(parent_widget, "Claim License", msg)
+            else:
+                fallback = ONLINE_LICENSE_CONFIG.get("signup_url", "https://www.blackboxthc.com/signup")
+                QDesktopServices.openUrl(QUrl(fallback))
+
+    worker = _ClaimTicketWorker(parent=parent_widget)
+    worker.finished.connect(on_res)
+    if parent_widget:
+        parent_widget._claim_worker = worker
+    worker.start()
